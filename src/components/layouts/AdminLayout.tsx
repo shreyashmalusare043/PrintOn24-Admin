@@ -179,7 +179,6 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
           </div>
         </div>
       </aside>
-
       {/* Main Column - Fixed Navbar & Only Main Page Content Scrolls */}
       <div className="flex-1 min-w-0 md:pl-64 flex flex-col h-screen overflow-hidden">
         {/* Fixed Top Header */}
@@ -218,12 +217,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             {/* Page Title & Breadcrumb */}
             <div className="min-w-0">
               <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                <img
-                  src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
-                  alt="PrintOn24"
-                  className="h-4 w-auto max-w-[80px] object-contain inline-block"
-                />
-                <ChevronRight className="w-3.5 h-3.5" />
+
                 <span className="truncate">{currentNav.name}</span>
               </div>
               <h1 className="text-base md:text-lg font-heading font-bold text-foreground truncate leading-tight">
