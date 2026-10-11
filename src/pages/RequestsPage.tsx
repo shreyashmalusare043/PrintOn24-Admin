@@ -21,6 +21,8 @@ export const RequestsPage: React.FC = () => {
   const [requests, setRequests] = useState<UnifiedRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [sourceFilter, setSourceFilter] = useState<'all' | 'user' | 'shopkeeper' | 'advertiser'>('all');
+  // Exception 4: Dedicated filter categories: All, Contact Us, Feedback, Advertising / Business Inquiry, Support
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Filters state
   const [filters, setFilters] = useState<FilterState>({
@@ -85,6 +87,17 @@ export const RequestsPage: React.FC = () => {
     const matchesSource = sourceFilter === 'all' || r.source === sourceFilter;
     const matchesStatus = filters.status === 'all' || (r.status && r.status.toLowerCase() === filters.status.toLowerCase());
 
+    let matchesCategory = true;
+    if (categoryFilter === 'contact') {
+      matchesCategory = r.type.toLowerCase().includes('contact');
+    } else if (categoryFilter === 'feedback') {
+      matchesCategory = r.type.toLowerCase().includes('feedback');
+    } else if (categoryFilter === 'advertising') {
+      matchesCategory = r.source === 'advertiser' || r.type.toLowerCase().includes('ad') || r.type.toLowerCase().includes('sponsorship');
+    } else if (categoryFilter === 'support') {
+      matchesCategory = r.source === 'shopkeeper' || r.type.toLowerCase().includes('support');
+    }
+
     let matchesDate = true;
     if (filters.startDate) {
       const created = r.createdAt ? r.createdAt.split('T')[0] : '';
@@ -95,7 +108,7 @@ export const RequestsPage: React.FC = () => {
       matchesDate = matchesDate && created <= filters.endDate;
     }
 
-    return matchesSource && matchesStatus && matchesDate;
+    return matchesSource && matchesCategory && matchesStatus && matchesDate;
   });
 
   return (
@@ -146,17 +159,21 @@ export const RequestsPage: React.FC = () => {
               </CardDescription>
             </div>
 
-            <Select value={sourceFilter} onValueChange={(val: any) => setSourceFilter(val)}>
-              <SelectTrigger className="w-44 h-8 text-xs">
-                <SelectValue placeholder="Filter Source" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Request Sources</SelectItem>
-                <SelectItem value="user">User Inquiries</SelectItem>
-                <SelectItem value="shopkeeper">Shopkeeper Requests</SelectItem>
-                <SelectItem value="advertiser">Advertiser Sponsorships</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Exception 4: Dedicated filter options (All, Contact Us, Feedback, Advertising / Business Inquiry, Support) */}
+            <div className="flex items-center gap-2">
+              <Select value={categoryFilter} onValueChange={(val: any) => setCategoryFilter(val)}>
+                <SelectTrigger className="w-56 h-8 text-xs font-medium">
+                  <SelectValue placeholder="Filter Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="contact">Contact Us</SelectItem>
+                  <SelectItem value="feedback">Feedback</SelectItem>
+                  <SelectItem value="advertising">Advertising / Business Inquiry</SelectItem>
+                  <SelectItem value="support">Support</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

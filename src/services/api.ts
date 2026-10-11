@@ -29,13 +29,15 @@ import type {
   AdminOTP,
   AdPlacement,
   Advertisement,
-  InformationalPage
+  InformationalPage,
+  HomeBanner,
+  UploadPageAd
 } from '@/types/types';
 
 // ========================================================
 // 1. Overall Dashboard Analytics & Metrics
 // ========================================================
-export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats> {
+export async function fetchOverallPlatformStats(periodDays: number = 14): Promise<OverallPlatformStats> {
   try {
     const [
       shopsRes,
@@ -50,8 +52,8 @@ export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats>
       supabase.from('user_profiles').select('id', { count: 'exact' }).limit(500),
       supabase.from('user_memberships').select('id, shop_id, is_active').limit(500),
       supabase.from('shopkeeper_accounts').select('id', { count: 'exact' }).limit(500),
-      supabase.from('print_orders').select('id, total_price, total_pages, payment_mode, payment_status, shop_id').limit(1000),
-      supabase.from('payments').select('id, amount, payment_method, payment_status, shop_id, created_at').limit(1000),
+      supabase.from('print_orders').select('id, grand_total, total_pages, payment_method, payment_status, shop_id, created_at').limit(2000),
+      supabase.from('payments').select('id, amount, payment_method, payment_status, shop_id, created_at').limit(2000),
       supabase.from('shop_settlements').select('*').limit(500)
     ]);
 
@@ -74,16 +76,21 @@ export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats>
 
     let onlinePaymentsAmount = 0;
     let counterPaymentsAmount = 0;
+    let upiPaymentsAmount = 0;
+
     for (const p of payments) {
       const amt = Number(p.amount) || 0;
-      if (p.payment_method === 'online') {
+      const method = (p.payment_method || '').toLowerCase();
+      if (method.includes('upi') || method.includes('payu')) {
+        upiPaymentsAmount += amt;
+      } else if (method.includes('online') || method.includes('razorpay')) {
         onlinePaymentsAmount += amt;
       } else {
         counterPaymentsAmount += amt;
       }
     }
 
-    const totalRevenue = onlinePaymentsAmount + counterPaymentsAmount;
+    const totalRevenue = onlinePaymentsAmount + counterPaymentsAmount + upiPaymentsAmount;
 
     const pendingSettlements = settlements.filter((s) => s.status === 'pending');
     const completedSettlements = settlements.filter((s) => s.status === 'completed');
@@ -91,6 +98,46 @@ export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats>
     const pendingSettlementsAmount = pendingSettlements.reduce((sum, s) => sum + (Number(s.net_payable) || 0), 0);
     const completedSettlementsCount = completedSettlements.length;
     const completedSettlementsAmount = completedSettlements.reduce((sum, s) => sum + (Number(s.net_payable) || 0), 0);
+
+    // Build timeline dates (grouped by day) for periodDays
+    const dailyMap = new Map<string, { date: string; displayDate: string; upi: number; online: number; counter: number; total: number }>();
+    const now = new Date('2026-10-11T23:59:59Z');
+
+    for (let i = periodDays - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateKey = d.toISOString().split('T')[0];
+      const displayDate = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+      dailyMap.set(dateKey, {
+        date: dateKey,
+        displayDate,
+        upi: 0,
+        online: 0,
+        counter: 0,
+        total: 0
+      });
+    }
+
+    // Populate daily amounts from payments
+    for (const p of payments) {
+      if (!p.created_at) continue;
+      const pDate = p.created_at.split('T')[0];
+      const item = dailyMap.get(pDate);
+      if (item) {
+        const amt = Number(p.amount) || 0;
+        const method = (p.payment_method || '').toLowerCase();
+        if (method.includes('upi') || method.includes('payu')) {
+          item.upi += amt;
+        } else if (method.includes('online') || method.includes('razorpay')) {
+          item.online += amt;
+        } else {
+          item.counter += amt;
+        }
+        item.total += amt;
+      }
+    }
+
+    const dailyRevenueBreakdown = Array.from(dailyMap.values());
 
     // Build Shop-wise breakdown
     const shopRevenueMap = new Map<string, {
@@ -125,7 +172,8 @@ export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats>
       const item = shopRevenueMap.get(p.shop_id);
       if (item) {
         const amt = Number(p.amount) || 0;
-        if (p.payment_method === 'online') {
+        const method = (p.payment_method || '').toLowerCase();
+        if (method.includes('online') || method.includes('razorpay')) {
           item.onlineRevenue += amt;
         } else {
           item.counterRevenue += amt;
@@ -156,10 +204,12 @@ export async function fetchOverallPlatformStats(): Promise<OverallPlatformStats>
       totalRevenue,
       onlinePaymentsAmount,
       counterPaymentsAmount,
+      upiPaymentsAmount,
       pendingSettlementsCount,
       pendingSettlementsAmount,
       completedSettlementsCount,
       completedSettlementsAmount,
+      dailyRevenueBreakdown,
       shopRevenueList
     };
   } catch (err) {
@@ -330,6 +380,66 @@ export async function updateShopPaymentConfig(
   if (error) throw error;
 }
 
+export async function bulkUpdateShopPaymentConfig(
+  shopIds: string[],
+  config: PaymentMethodConfig
+): Promise<void> {
+  if (shopIds.length === 0) return;
+  const { error } = await supabase
+    .from('print_shops')
+    .update({ payment_method_config: config })
+    .in('id', shopIds);
+
+  if (error) throw error;
+}
+
+export interface PlatformPaymentSettings {
+  id: string;
+  commission_rate: number;
+  razorpay_enabled: boolean;
+  pay_on_counter_enabled: boolean;
+  payu_enabled: boolean;
+  payout_cycle_days: number;
+  min_payout_amount: number;
+  updated_at: string;
+}
+
+export async function fetchPlatformPaymentSettings(): Promise<PlatformPaymentSettings> {
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('*')
+    .eq('id', 'default')
+    .single();
+
+  if (error || !data) {
+    return {
+      id: 'default',
+      commission_rate: 5.0,
+      razorpay_enabled: true,
+      pay_on_counter_enabled: true,
+      payu_enabled: true,
+      payout_cycle_days: 2,
+      min_payout_amount: 500,
+      updated_at: new Date().toISOString()
+    };
+  }
+  return data;
+}
+
+export async function updatePlatformPaymentSettings(
+  settings: Partial<PlatformPaymentSettings>
+): Promise<void> {
+  const { error } = await supabase
+    .from('platform_settings')
+    .upsert({
+      id: 'default',
+      ...settings,
+      updated_at: new Date().toISOString()
+    });
+
+  if (error) throw error;
+}
+
 export async function fetchShopkeeperForShop(shopId: string): Promise<ShopkeeperAccount | null> {
   const { data, error } = await supabase
     .from('shopkeeper_accounts')
@@ -395,9 +505,48 @@ export async function markSettlementPaid(
     .from('shop_settlements')
     .update({
       status: 'completed',
-      paid_at: new Date().toISOString()
+      paid_at: new Date().toISOString(),
+      payout_reference: referenceNote || 'Direct Bank Payout'
     })
     .eq('id', settlementId);
+
+  if (error) throw error;
+}
+
+export async function updateSettlementStatus(
+  settlementId: string,
+  status: 'pending' | 'processing' | 'completed' | 'rejected',
+  options?: { referenceNote?: string; rejectionReason?: string }
+): Promise<void> {
+  const updateData: any = { status };
+  if (status === 'completed') {
+    updateData.paid_at = new Date().toISOString();
+    if (options?.referenceNote) updateData.payout_reference = options.referenceNote;
+  } else if (status === 'rejected') {
+    if (options?.rejectionReason) updateData.rejection_reason = options.rejectionReason;
+  }
+
+  const { error } = await supabase
+    .from('shop_settlements')
+    .update(updateData)
+    .eq('id', settlementId);
+
+  if (error) throw error;
+}
+
+export async function bulkMarkSettlementsPaid(
+  settlementIds: string[],
+  referenceNote?: string
+): Promise<void> {
+  if (settlementIds.length === 0) return;
+  const { error } = await supabase
+    .from('shop_settlements')
+    .update({
+      status: 'completed',
+      paid_at: new Date().toISOString(),
+      payout_reference: referenceNote || 'Bulk Admin Disbursement'
+    })
+    .in('id', settlementIds);
 
   if (error) throw error;
 }
@@ -1063,52 +1212,87 @@ export async function updateSecurityPasswordWithOtp(
 }
 
 // ========================================================
-// 13. Advertisements Management (Home Hero & Upload Page)
+// 13. Advertisements Management (Home Banners & Upload Page Ads ONLY)
 // ========================================================
-export async function fetchAdvertisements(placement?: AdPlacement): Promise<Advertisement[]> {
-  let query = supabase.from('advertisements').select('*').order('display_order', { ascending: true });
-  if (placement) {
-    query = query.eq('placement', placement);
-  }
-  const { data, error } = await query;
+export async function fetchHomeBanners(): Promise<HomeBanner[]> {
+  const { data, error } = await supabase
+    .from('home_banners')
+    .select('*')
+    .order('display_order', { ascending: true });
   if (error) throw error;
-  return Array.isArray(data) ? (data as Advertisement[]) : [];
+  return Array.isArray(data) ? (data as HomeBanner[]) : [];
 }
 
-export async function saveAdvertisement(ad: Partial<Advertisement> & { title: string; image_url: string; placement: AdPlacement }): Promise<void> {
-  if (ad.id) {
-    const { error } = await supabase
-      .from('advertisements')
-      .update({
-        ...ad,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', ad.id);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('advertisements')
-      .insert({
-        title: ad.title,
-        description: ad.description || '',
-        image_url: ad.image_url,
-        target_url: ad.target_url || '',
-        placement: ad.placement,
-        is_active: ad.is_active !== undefined ? ad.is_active : true,
-        display_order: ad.display_order || 1
-      });
-    if (error) throw error;
-  }
-}
-
-export async function deleteAdvertisement(id: string): Promise<void> {
-  const { error } = await supabase.from('advertisements').delete().eq('id', id);
-  if (error) throw error;
-}
-
-export async function toggleAdvertisementActive(id: string, current: boolean): Promise<void> {
+export async function saveHomeBanner(banner: Partial<HomeBanner> & { title: string; image_url: string }): Promise<void> {
+  const id = banner.id || `banner_${Date.now()}`;
+  const now = new Date().toISOString();
   const { error } = await supabase
-    .from('advertisements')
+    .from('home_banners')
+    .upsert({
+      id,
+      title: banner.title,
+      subtitle: banner.subtitle || '',
+      description: banner.description || banner.subtitle || '',
+      image_url: banner.image_url,
+      button_text: banner.button_text || 'Print Now',
+      button_link: banner.button_link || banner.destination_url || '/upload',
+      destination_url: banner.destination_url || banner.button_link || '/upload',
+      display_order: banner.display_order ?? 1,
+      sort_order: banner.display_order ?? 1,
+      is_active: banner.is_active !== undefined ? banner.is_active : true,
+      updated_at: now
+    });
+  if (error) throw error;
+}
+
+export async function deleteHomeBanner(id: string): Promise<void> {
+  const { error } = await supabase.from('home_banners').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function toggleHomeBannerActive(id: string, current: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('home_banners')
+    .update({ is_active: !current, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function fetchUploadPageAds(): Promise<UploadPageAd[]> {
+  const { data, error } = await supabase
+    .from('upload_page_ads')
+    .select('*')
+    .order('display_order', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? (data as UploadPageAd[]) : [];
+}
+
+export async function saveUploadPageAd(ad: Partial<UploadPageAd> & { title: string; image_url: string }): Promise<void> {
+  const id = ad.id || `ad_${Date.now()}`;
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('upload_page_ads')
+    .upsert({
+      id,
+      title: ad.title,
+      description: ad.description || '',
+      image_url: ad.image_url,
+      destination_url: ad.destination_url || 'https://printon24.com/offers',
+      display_order: ad.display_order ?? 1,
+      is_active: ad.is_active !== undefined ? ad.is_active : true,
+      updated_at: now
+    });
+  if (error) throw error;
+}
+
+export async function deleteUploadPageAd(id: string): Promise<void> {
+  const { error } = await supabase.from('upload_page_ads').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function toggleUploadPageAdActive(id: string, current: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('upload_page_ads')
     .update({ is_active: !current, updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;

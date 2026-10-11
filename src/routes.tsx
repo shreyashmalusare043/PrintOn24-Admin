@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { OperationalLedgerPage } from './pages/OperationalLedgerPage';
 import { ShopsPage } from './pages/ShopsPage';
 import { PaymentMethodsPage } from './pages/PaymentMethodsPage';
 import { SettlementsPage } from './pages/SettlementsPage';
@@ -51,6 +52,15 @@ export const routes: RouteConfig[] = [
     element: (
       <ProtectedRoute>
         <DashboardPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    name: 'Operational Ledger',
+    path: '/operational-ledger',
+    element: (
+      <ProtectedRoute>
+        <OperationalLedgerPage />
       </ProtectedRoute>
     ),
   },

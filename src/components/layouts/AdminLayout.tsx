@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   Palette,
   Megaphone,
-  BookOpen
+  BookOpen,
+  Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -47,6 +48,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+  { name: 'Operational Ledger', path: '/operational-ledger', icon: Activity },
   { name: 'Shops & Shopkeepers', path: '/shops', icon: Store },
   { name: 'Payment Methods', path: '/payment-methods', icon: CreditCard },
   { name: 'Settlements & Payouts', path: '/settlements', icon: Banknote },
@@ -111,17 +113,13 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
       {/* Desktop Fixed Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 h-screen fixed inset-y-0 left-0 z-40 border-r border-border bg-sidebar select-none">
         {/* Brand Header */}
-        <div className="h-16 shrink-0 flex items-center px-5 border-b border-sidebar-border justify-between">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-sm">
-              <Printer className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="font-heading font-bold text-lg text-foreground tracking-tight">PrintOn24</span>
-              </div>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider">Super Admin</p>
-            </div>
+        <div className="h-16 shrink-0 flex items-center px-4 border-b border-sidebar-border justify-between">
+          <div className="flex items-center space-x-2">
+            <img
+              src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
+              alt="PrintOn24"
+              className="h-8 w-auto max-w-[140px] object-contain"
+            />
           </div>
           <Badge variant="secondary" className="text-[10px] font-mono px-1.5">v2.4</Badge>
         </div>
@@ -198,10 +196,11 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
               <SheetContent side="left" className="p-0 w-72 flex flex-col bg-sidebar">
                 <SheetHeader className="p-4 border-b border-sidebar-border">
                   <SheetTitle className="flex items-center space-x-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
-                      <Printer className="w-4 h-4" />
-                    </div>
-                    <span className="font-heading font-bold text-lg">PrintOn24</span>
+                    <img
+                      src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
+                      alt="PrintOn24"
+                      className="h-7 w-auto max-w-[130px] object-contain"
+                    />
                   </SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto">
@@ -219,7 +218,11 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             {/* Page Title & Breadcrumb */}
             <div className="min-w-0">
               <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">PrintOn24</span>
+                <img
+                  src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
+                  alt="PrintOn24"
+                  className="h-4 w-auto max-w-[80px] object-contain inline-block"
+                />
                 <ChevronRight className="w-3.5 h-3.5" />
                 <span className="truncate">{currentNav.name}</span>
               </div>

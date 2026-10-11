@@ -11,7 +11,6 @@ import {
   List,
   ListOrdered,
   Link,
-  Code,
   Heading1,
   Heading2,
   Heading3,
@@ -20,7 +19,9 @@ import {
   Edit,
   Quote,
   Undo,
-  Redo
+  Redo,
+  Image as ImageIcon,
+  RemoveFormatting
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -40,7 +41,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   minHeight = '350px'
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'edit' | 'preview' | 'html'>('edit');
+  // Exception 3: Only 'edit' and 'preview' modes. HTML tab removed entirely.
+  const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
   const [fontFamily, setFontFamily] = useState('sans-serif');
   const [fontSize, setFontSize] = useState('3'); // HTML font size 1-7 (3 = ~16px)
 
@@ -73,6 +75,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const url = prompt('Enter URL address (e.g. https://printon24.com/help):');
     if (url) {
       executeCommand('createLink', url);
+    }
+  };
+
+  const handleInsertImage = () => {
+    const url = prompt('Enter Image URL (e.g. https://images.unsplash.com/...):');
+    if (url) {
+      executeCommand('insertImage', url);
     }
   };
 
@@ -227,7 +236,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <div className="h-5 w-px bg-border mx-1" />
 
-          {/* Lists & Links */}
+          {/* Lists, Links, Image, Clear */}
           <Button
             type="button"
             variant="ghost"
@@ -258,6 +267,26 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           >
             <Link className="w-3.5 h-3.5" />
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={handleInsertImage}
+            className="h-8 w-8 hover:bg-muted"
+            title="Insert Image"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => executeCommand('removeFormat')}
+            className="h-8 w-8 hover:bg-muted"
+            title="Clear Formatting"
+          >
+            <RemoveFormatting className="w-3.5 h-3.5" />
+          </Button>
 
           <div className="h-5 w-px bg-border mx-1" />
 
@@ -284,7 +313,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </Button>
         </div>
 
-        {/* View mode toggle */}
+        {/* View mode toggle - ONLY Edit and Preview (Exception 3: HTML tab removed) */}
         <div className="flex items-center space-x-1">
           <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)}>
             <TabsList className="h-8 text-[11px]">
@@ -293,9 +322,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
               </TabsTrigger>
               <TabsTrigger value="preview" className="h-7 text-xs px-2.5 flex items-center gap-1">
                 <Eye className="w-3 h-3" /> Preview
-              </TabsTrigger>
-              <TabsTrigger value="html" className="h-7 text-xs px-2.5 flex items-center gap-1">
-                <Code className="w-3 h-3" /> HTML
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -321,16 +347,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
             style={{ minHeight }}
             className="p-4 bg-muted/20 border-border prose prose-sm dark:prose-invert max-w-none overflow-y-auto"
             dangerouslySetInnerHTML={{ __html: value || '<p className="text-muted-foreground italic">No content to preview</p>' }}
-          />
-        )}
-
-        {activeTab === 'html' && (
-          <textarea
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            style={{ minHeight }}
-            className="w-full p-4 font-mono text-xs bg-muted/40 text-foreground resize-none outline-none border-none"
-            placeholder="Edit raw HTML markup..."
           />
         )}
       </div>

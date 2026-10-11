@@ -411,14 +411,20 @@ export const JobsPage: React.FC = () => {
                 )}
               </div>
 
-              {selectedApp.cover_note && (
-                <div className="space-y-1">
-                  <span className="font-semibold text-foreground">Cover Note:</span>
-                  <p className="p-2.5 bg-card border border-border rounded text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                    {selectedApp.cover_note}
-                  </p>
+              {/* Exception 5: Cover Note formatted in a dedicated, clearly separated section with line breaks preserved */}
+              <div className="rounded-xl border border-border p-3.5 bg-muted/40 space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-primary" /> Candidate Cover Note & Statement
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">Preserved Formatting</Badge>
                 </div>
-              )}
+                <div className="p-3 bg-card border border-border/80 rounded-lg text-xs text-foreground leading-relaxed whitespace-pre-wrap font-sans shadow-inner">
+                  {selectedApp.cover_note || (
+                    <span className="text-muted-foreground italic">No cover note provided by this candidate.</span>
+                  )}
+                </div>
+              </div>
 
               <DialogFooter className="pt-2">
                 <Button variant="outline" size="sm" onClick={() => setSelectedApp(null)} className="h-8 text-xs">

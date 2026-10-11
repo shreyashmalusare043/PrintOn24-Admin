@@ -6,29 +6,40 @@ import {
   Store,
   Users,
   Printer,
-  ShoppingBag,
   IndianRupee,
   CreditCard,
   Banknote,
   Clock,
   CheckCircle2,
-  AlertTriangle,
   ArrowUpRight,
   RefreshCw,
-  TrendingUp,
   Cpu,
   Layers,
-  ArrowRight
+  ArrowRight,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend
+} from 'recharts';
 import { toast } from 'sonner';
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<OverallPlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [periodDays, setPeriodDays] = useState<number>(14);
   const navigate = useNavigate();
 
   const loadData = async (isManual = false) => {
@@ -36,7 +47,7 @@ export const DashboardPage: React.FC = () => {
     else setLoading(true);
 
     try {
-      const data = await fetchOverallPlatformStats();
+      const data = await fetchOverallPlatformStats(periodDays);
       setStats(data);
       if (isManual) toast.success('Analytics metrics refreshed from database');
     } catch (err) {
@@ -50,7 +61,16 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+
+    // Auto-refresh interval (polling every 30 seconds for real-time telemetry)
+    const interval = setInterval(() => {
+      fetchOverallPlatformStats(periodDays)
+        .then((data) => setStats(data))
+        .catch(() => {});
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [periodDays]);
 
   if (loading && !stats) {
     return (
@@ -83,7 +103,7 @@ export const DashboardPage: React.FC = () => {
       value: (stats?.totalPrints || 0).toLocaleString(),
       subValue: `${stats?.totalOrders || 0} Processed Orders`,
       icon: Printer,
-      path: '/users',
+      path: '/operational-ledger',
       accent: 'text-emerald-600'
     },
     {
@@ -105,15 +125,26 @@ export const DashboardPage: React.FC = () => {
             <h2 className="text-xl md:text-2xl font-heading font-bold text-foreground">
               PrintOn24 Executive Overview
             </h2>
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-xs">
-              Live Production
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+              Live Database Stream
             </Badge>
           </div>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
             Real-time telemetry across shops, settlements, terminals, and print operations.
           </p>
         </div>
-        <div className="flex items-center space-x-3 shrink-0">
+        <div className="flex items-center space-x-2 shrink-0">
+          <Select value={periodDays.toString()} onValueChange={(val) => setPeriodDays(Number(val))}>
+            <SelectTrigger className="w-32 h-9 text-xs bg-card">
+              <SelectValue placeholder="Period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 Days</SelectItem>
+              <SelectItem value="14">Last 14 Days</SelectItem>
+              <SelectItem value="30">Last 30 Days</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             size="sm"
@@ -191,22 +222,28 @@ export const DashboardPage: React.FC = () => {
         })}
       </div>
 
-      {/* Revenue & Payment Modes Breakdown */}
+      {/* Revenue & Payment Methods Breakdown - Main Chart Fix */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Financial Health */}
+        {/* Left: Financial Health & Dotted-Point Line Chart */}
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <CardTitle className="text-base font-heading font-bold">Revenue & Payment Methods Breakdown</CardTitle>
-                <CardDescription className="text-xs">Database-driven distribution of Razorpay online versus counter cash</CardDescription>
+                <CardTitle className="text-base font-heading font-bold flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  Revenue and Payment Method Breakdown
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Fluctuating daily telemetry across Razorpay Online, Counter Cash, and UPI (Last {periodDays} Days)
+                </CardDescription>
               </div>
-              <Badge variant="outline" className="text-xs">
-                Real-Time
+              <Badge variant="outline" className="text-xs self-start sm:self-auto">
+                Live Dynamic
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
+            {/* 3 Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-4 rounded-lg bg-muted/50 border border-border">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -217,76 +254,111 @@ export const DashboardPage: React.FC = () => {
                   ₹{(stats?.onlinePaymentsAmount || 0).toLocaleString()}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Company Razorpay Gateway
+                  Razorpay Payment Gateway
                 </p>
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border border-border">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Pay on Counter (Cash/UPI)</span>
+                  <span>Pay on Counter (Cash)</span>
                   <Banknote className="w-3.5 h-3.5 text-emerald-600" />
                 </div>
                 <div className="text-xl font-heading font-bold mt-2 text-foreground">
                   ₹{(stats?.counterPaymentsAmount || 0).toLocaleString()}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Direct In-Store Collection
+                  Direct In-Store Cash Collection
                 </p>
               </div>
 
               <div className="p-4 rounded-lg bg-muted/50 border border-border">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Completed Payouts</span>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                  <span>PayU / UPI Inflow</span>
+                  <Activity className="w-3.5 h-3.5 text-amber-600" />
                 </div>
                 <div className="text-xl font-heading font-bold mt-2 text-foreground">
-                  ₹{(stats?.completedSettlementsAmount || 0).toLocaleString()}
+                  ₹{(stats?.upiPaymentsAmount || 0).toLocaleString()}
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Disbursed to Shopkeepers
+                  Instant UPI QR Transactions
                 </p>
               </div>
             </div>
 
-            {/* Visual ratio bar */}
-            <div>
-              <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                <span>Payment Mode Distribution</span>
-                <span>
-                  Online:{' '}
-                  {stats?.totalRevenue
-                    ? Math.round(((stats.onlinePaymentsAmount || 0) / stats.totalRevenue) * 100)
-                    : 50}
-                  % • Counter:{' '}
-                  {stats?.totalRevenue
-                    ? Math.round(((stats.counterPaymentsAmount || 0) / stats.totalRevenue) * 100)
-                    : 50}
-                  %
-                </span>
+            {/* Dotted-Point Fluctuating Line Chart */}
+            <div className="w-full pt-2">
+              <div className="flex justify-between items-center text-xs text-muted-foreground mb-2">
+                <span className="font-medium text-foreground">Daily Revenue Fluctuations by Payment Method</span>
+                <span>Auto-refresh: 30s interval</span>
               </div>
-              <div className="h-3 w-full bg-muted rounded-full overflow-hidden flex">
-                <div
-                  className="bg-blue-600 h-full transition-all duration-500"
-                  style={{
-                    width: `${
-                      stats?.totalRevenue
-                        ? ((stats.onlinePaymentsAmount || 0) / stats.totalRevenue) * 100
-                        : 50
-                    }%`
-                  }}
-                  title="Online Payments"
-                />
-                <div
-                  className="bg-emerald-500 h-full transition-all duration-500"
-                  style={{
-                    width: `${
-                      stats?.totalRevenue
-                        ? ((stats.counterPaymentsAmount || 0) / stats.totalRevenue) * 100
-                        : 50
-                    }%`
-                  }}
-                  title="Counter Payments"
-                />
+              <div className="w-full h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={stats?.dailyRevenueBreakdown || []}
+                    margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                    <XAxis
+                      dataKey="displayDate"
+                      tick={{ fontSize: 11 }}
+                      stroke="currentColor"
+                      className="text-muted-foreground"
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(val) => `₹${val}`}
+                      stroke="currentColor"
+                      className="text-muted-foreground"
+                    />
+                    <Tooltip
+                      formatter={(value: any, name: string) => [`₹${Number(value).toLocaleString()}`, name]}
+                      labelFormatter={(label) => `Date: ${label}`}
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        borderColor: 'hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px'
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      name="Total Revenue"
+                      stroke="#e11d48"
+                      strokeWidth={2.5}
+                      dot={{ r: 4, fill: '#e11d48', strokeWidth: 1 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="counter"
+                      name="Counter Cash"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={{ r: 3.5, fill: '#10b981', strokeWidth: 1 }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="online"
+                      name="Razorpay Online"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={{ r: 3.5, fill: '#2563eb', strokeWidth: 1 }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="upi"
+                      name="UPI / PayU"
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      dot={{ r: 3.5, fill: '#f59e0b', strokeWidth: 1 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </CardContent>
@@ -299,6 +371,18 @@ export const DashboardPage: React.FC = () => {
             <CardDescription className="text-xs">Direct navigation to core management modules</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2.5">
+            <Button
+              variant="outline"
+              className="w-full justify-between h-11 text-xs"
+              onClick={() => navigate('/operational-ledger')}
+            >
+              <div className="flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-emerald-600" />
+                <span>Operational Ledger & Orders</span>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+            </Button>
+
             <Button
               variant="outline"
               className="w-full justify-between h-11 text-xs"
@@ -363,10 +447,10 @@ export const DashboardPage: React.FC = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate('/shops')}
+              onClick={() => navigate('/operational-ledger')}
               className="text-xs h-8"
             >
-              Full Shop Directory <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              Full Operational Ledger <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </div>
         </CardHeader>

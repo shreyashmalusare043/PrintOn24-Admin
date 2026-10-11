@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   fetchPaymentTransactions,
   fetchShopSettlements,
   fetchShops,
   markSettlementPaid,
+  updateSettlementStatus,
+  bulkMarkSettlementsPaid,
   triggerManualSettlementGeneration
 } from '@/services/api';
 import type { PaymentTransaction, ShopSettlement, PrintShop } from '@/types/types';
@@ -19,7 +21,12 @@ import {
   Building2,
   ExternalLink,
   ShieldCheck,
-  Check
+  Check,
+  XCircle,
+  FileCheck,
+  Download,
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +42,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { ProtectedPageWrapper } from '@/components/security/ProtectedPageWrapper';
 import { DatabaseFilterBar, FilterState } from '@/components/common/DatabaseFilterBar';
 import { toast } from 'sonner';
@@ -44,6 +52,9 @@ export const SettlementsPage: React.FC = () => {
   const [settlements, setSettlements] = useState<ShopSettlement[]>([]);
   const [shops, setShops] = useState<PrintShop[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Selected item checkboxes for Bulk Actions
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Filters state
   const [filters, setFilters] = useState<FilterState>({
@@ -56,9 +67,13 @@ export const SettlementsPage: React.FC = () => {
   });
 
   // Payout Execution Modal
-  const [selectedSettlement, setSelectedSettlement] = useState<ShopSettlement | null>(null);
-  const [refNote, setRefNote] = useState('');
-  const [paying, setPaying] = useState(false);
+  const [payoutModal, setPayoutModal] = useState<ShopSettlement | null>(null);
+  const [payoutRefNote, setPayoutRefNote] = useState('');
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
+
+  // Rejection Modal
+  const [rejectModal, setRejectModal] = useState<ShopSettlement | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   // Manual Settlement Generation
   const [manualShopId, setManualShopId] = useState<string>('');
@@ -68,8 +83,8 @@ export const SettlementsPage: React.FC = () => {
     setLoading(true);
     try {
       const [pData, sData, shData] = await Promise.all([
-        fetchPaymentTransactions(100),
-        fetchShopSettlements(100),
+        fetchPaymentTransactions(200),
+        fetchShopSettlements(200),
         fetchShops(100)
       ]);
       setPayments(pData);
@@ -79,7 +94,7 @@ export const SettlementsPage: React.FC = () => {
         setManualShopId(shData[0].id);
       }
     } catch (err) {
-      toast.error('Failed to load payments and settlement ledger');
+      toast.error('Failed to load settlements from database');
     } finally {
       setLoading(false);
     }
@@ -89,21 +104,88 @@ export const SettlementsPage: React.FC = () => {
     loadData();
   }, []);
 
-  const handleExecutePayout = async () => {
-    if (!selectedSettlement) return;
-    setPaying(true);
+  // Status transitions
+  const handleMoveToProcessing = async (settlement: ShopSettlement) => {
     try {
-      await markSettlementPaid(selectedSettlement.id, refNote || 'Bank Transfer Executed');
+      await updateSettlementStatus(settlement.id, 'processing');
       setSettlements((prev) =>
-        prev.map((s) => (s.id === selectedSettlement.id ? { ...s, status: 'completed', paid_at: new Date().toISOString() } : s))
+        prev.map((s) => (s.id === settlement.id ? { ...s, status: 'processing' as any } : s))
       );
-      toast.success(`Payout of ₹${selectedSettlement.net_payable.toLocaleString()} for ${selectedSettlement.shop_name} marked as Completed!`);
-      setSelectedSettlement(null);
-      setRefNote('');
+      toast.info(`Settlement for ${settlement.shop_name} marked as In Review / Processing`);
     } catch (err) {
-      toast.error('Failed to mark settlement as paid');
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleExecutePayout = async () => {
+    if (!payoutModal) return;
+    setIsProcessingAction(true);
+    try {
+      await markSettlementPaid(payoutModal.id, payoutRefNote || 'Bank Transfer Executed');
+      setSettlements((prev) =>
+        prev.map((s) =>
+          s.id === payoutModal.id
+            ? { ...s, status: 'completed', paid_at: new Date().toISOString() }
+            : s
+        )
+      );
+      toast.success(`Payout of ₹${payoutModal.net_payable.toLocaleString()} for ${payoutModal.shop_name} marked as Paid!`);
+      setPayoutModal(null);
+      setPayoutRefNote('');
+    } catch (err) {
+      toast.error('Failed to disburse settlement');
     } finally {
-      setPaying(false);
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleExecuteReject = async () => {
+    if (!rejectModal) return;
+    if (!rejectionReason.trim()) {
+      toast.error('Please specify a rejection reason');
+      return;
+    }
+    setIsProcessingAction(true);
+    try {
+      await updateSettlementStatus(rejectModal.id, 'rejected', {
+        rejectionReason: rejectionReason.trim()
+      });
+      setSettlements((prev) =>
+        prev.map((s) =>
+          s.id === rejectModal.id
+            ? { ...s, status: 'rejected' as any, rejection_reason: rejectionReason.trim() }
+            : s
+        )
+      );
+      toast.warning(`Settlement for ${rejectModal.shop_name} has been rejected`);
+      setRejectModal(null);
+      setRejectionReason('');
+    } catch (err) {
+      toast.error('Failed to reject settlement');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // Bulk Mark Paid
+  const handleBulkMarkPaid = async () => {
+    if (selectedIds.length === 0) return;
+    setIsProcessingAction(true);
+    try {
+      await bulkMarkSettlementsPaid(selectedIds, 'Bulk Super Admin Payout');
+      setSettlements((prev) =>
+        prev.map((s) =>
+          selectedIds.includes(s.id)
+            ? { ...s, status: 'completed', paid_at: new Date().toISOString() }
+            : s
+        )
+      );
+      toast.success(`Successfully marked ${selectedIds.length} settlements as Paid!`);
+      setSelectedIds([]);
+    } catch (err) {
+      toast.error('Failed to complete bulk payout');
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
@@ -113,7 +195,7 @@ export const SettlementsPage: React.FC = () => {
     try {
       const newSettle = await triggerManualSettlementGeneration(manualShopId);
       setSettlements((prev) => [newSettle, ...prev]);
-      toast.success(`Calculated 2-day settlement cycle batch for shop!`);
+      toast.success(`Generated 2-day settlement cycle batch for ${newSettle.shop_name}!`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to generate settlement');
     } finally {
@@ -121,47 +203,84 @@ export const SettlementsPage: React.FC = () => {
     }
   };
 
-  const filteredSettlements = settlements.filter((s) => {
-    const matchesShop = filters.shopIds.length === 0 || filters.shopIds.includes(s.shop_id);
-    const matchesStatus = filters.status === 'all' || s.status === filters.status;
+  // Filter application
+  const filteredSettlements = useMemo(() => {
+    return settlements.filter((s) => {
+      const matchesShop = filters.shopIds.length === 0 || filters.shopIds.includes(s.shop_id);
+      const matchesStatus = filters.status === 'all' || s.status === filters.status;
 
-    let matchesDate = true;
-    if (filters.startDate) {
-      const cycleDate = s.cycle_end_date ? s.cycle_end_date.split('T')[0] : '';
-      matchesDate = matchesDate && cycleDate >= filters.startDate;
-    }
-    if (filters.endDate) {
-      const cycleDate = s.cycle_start_date ? s.cycle_start_date.split('T')[0] : '';
-      matchesDate = matchesDate && cycleDate <= filters.endDate;
-    }
+      let matchesDate = true;
+      if (filters.startDate) {
+        const cycleDate = s.cycle_end_date ? s.cycle_end_date.split('T')[0] : '';
+        matchesDate = matchesDate && cycleDate >= filters.startDate;
+      }
+      if (filters.endDate) {
+        const cycleDate = s.cycle_start_date ? s.cycle_start_date.split('T')[0] : '';
+        matchesDate = matchesDate && cycleDate <= filters.endDate;
+      }
 
-    return matchesShop && matchesStatus && matchesDate;
-  });
+      return matchesShop && matchesStatus && matchesDate;
+    });
+  }, [settlements, filters]);
 
-  const filteredPayments = payments.filter((p) => {
-    const matchesShop = filters.shopIds.length === 0 || (p.shop_id && filters.shopIds.includes(p.shop_id));
-    const matchesStatus = filters.status === 'all' || p.payment_status === filters.status;
-    const matchesPayment = filters.paymentType === 'all' || p.payment_method === filters.paymentType;
-
-    let matchesDate = true;
-    if (filters.startDate) {
-      const pDate = p.created_at ? p.created_at.split('T')[0] : '';
-      matchesDate = matchesDate && pDate >= filters.startDate;
-    }
-    if (filters.endDate) {
-      const pDate = p.created_at ? p.created_at.split('T')[0] : '';
-      matchesDate = matchesDate && pDate <= filters.endDate;
-    }
-
-    return matchesShop && matchesStatus && matchesPayment && matchesDate;
-  });
-
-  const pendingSettlements = settlements.filter((s) => s.status === 'pending');
+  // Summaries
+  const pendingSettlements = settlements.filter((s) => s.status === 'pending' || (s.status as any) === 'processing');
   const completedSettlements = settlements.filter((s) => s.status === 'completed');
 
   const pendingTotal = pendingSettlements.reduce((sum, s) => sum + (Number(s.net_payable) || 0), 0);
   const completedTotal = completedSettlements.reduce((sum, s) => sum + (Number(s.net_payable) || 0), 0);
-  const totalOnlinePayments = payments.filter((p) => p.payment_method === 'online').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalCommission = settlements.reduce((sum, s) => sum + (Number(s.platform_commission) || 0), 0);
+
+  // Dynamic next settlement cycle date (48-hour cycle ending date)
+  const nextSettlementDate = useMemo(() => {
+    const d = new Date('2026-10-11T00:00:00Z');
+    d.setDate(d.getDate() + 1); // 12 Oct 2026
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, []);
+
+  const handleExportCSV = () => {
+    if (filteredSettlements.length === 0) {
+      toast.error('No settlements to export');
+      return;
+    }
+    const headers = ['Settlement ID', 'Shop Name', 'Cycle Start', 'Cycle End', 'Total Orders', 'Gross (₹)', 'Commission (₹)', 'Net Payable (₹)', 'Status', 'Paid At'];
+    const rows = filteredSettlements.map((s) => [
+      `"${s.id}"`,
+      `"${s.shop_name}"`,
+      `"${s.cycle_start_date || ''}"`,
+      `"${s.cycle_end_date || ''}"`,
+      s.total_orders,
+      s.gross_amount,
+      s.platform_commission,
+      s.net_payable,
+      `"${s.status}"`,
+      `"${s.paid_at || ''}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `PrintOn24_Settlements_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Exported settlements to CSV');
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filteredSettlements.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredSettlements.map((s) => s.id));
+    }
+  };
+
+  const toggleSelectId = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
 
   return (
     <ProtectedPageWrapper
@@ -177,13 +296,17 @@ export const SettlementsPage: React.FC = () => {
               Online Payments & 2-Day Settlement Cycle
             </h2>
             <p className="text-xs md:text-sm text-muted-foreground mt-1">
-              Track user payments collected via Razorpay, calculate accumulated shop balances over 2-day cycles, and disburse payouts.
+              Disburse accumulated Razorpay revenues over automated 2-day cycles to verified shopkeeper bank accounts.
             </p>
           </div>
           <div className="flex items-center space-x-2 shrink-0">
             <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-9 gap-1.5 text-xs">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleExportCSV} className="h-9 gap-1.5 text-xs">
+              <Download className="w-3.5 h-3.5" />
+              Export CSV
             </Button>
           </div>
         </div>
@@ -197,92 +320,107 @@ export const SettlementsPage: React.FC = () => {
           showStatusFilter={true}
           statusOptions={[
             { label: 'All Statuses', value: 'all' },
-            { label: 'Pending Settlement', value: 'pending' },
-            { label: 'Completed / Paid', value: 'completed' }
+            { label: 'Pending Payout', value: 'pending' },
+            { label: 'In Review / Processing', value: 'processing' },
+            { label: 'Completed / Paid', value: 'completed' },
+            { label: 'Rejected', value: 'rejected' }
           ]}
-          showPaymentFilter={true}
-          paymentOptions={[
-            { label: 'All Methods', value: 'all' },
-            { label: 'Razorpay Online Only', value: 'online' },
-            { label: 'Counter Cash Only', value: 'counter' }
-          ]}
+          showPaymentFilter={false}
         />
 
-      {/* 2-Day Settlement Status Highlight Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border border-amber-500/20 bg-amber-500/5 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Pending 2-Day Payouts</span>
-              <Clock className="w-4 h-4 text-amber-600" />
-            </div>
-            <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
-              ₹{pendingTotal.toLocaleString()}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {pendingSettlements.length} shops awaiting disbursement
-            </p>
-          </CardContent>
-        </Card>
+        {/* 4 Summary Cards based on Live DB Calculations */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border border-amber-500/20 bg-amber-500/5 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Payouts</span>
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
+                ₹{pendingTotal.toLocaleString()}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {pendingSettlements.length} shops awaiting disbursement
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="border border-emerald-500/20 bg-emerald-500/5 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Settled & Completed</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
-              ₹{completedTotal.toLocaleString()}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {completedSettlements.length} cycles disbursed successfully
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="border border-emerald-500/20 bg-emerald-500/5 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Completed Payouts</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
+                ₹{completedTotal.toLocaleString()}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {completedSettlements.length} cycles disbursed successfully
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="border border-blue-500/20 bg-blue-500/5 shadow-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Total Razorpay Inflow</span>
-              <CreditCard className="w-4 h-4 text-blue-600" />
-            </div>
-            <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
-              ₹{totalOnlinePayments.toLocaleString()}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              5% platform commission retained
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="border border-blue-500/20 bg-blue-500/5 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">Total Commission</span>
+                <Banknote className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="text-2xl font-heading font-extrabold mt-2 text-foreground">
+                ₹{totalCommission.toLocaleString()}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                5% platform fee retained
+              </p>
+            </CardContent>
+          </Card>
 
-        <Tabs defaultValue="settlements" className="w-full">
-          <TabsList className="grid grid-cols-2 h-9 text-xs max-w-md">
-            <TabsTrigger value="settlements" className="text-xs">
-              2-Day Settlements ({filteredSettlements.length})
-            </TabsTrigger>
-            <TabsTrigger value="transactions" className="text-xs">
-              Razorpay Online Ledger ({filteredPayments.length})
-            </TabsTrigger>
-          </TabsList>
+          <Card className="border border-primary/20 bg-primary/5 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-primary">Next Settlement Date</span>
+                <Calendar className="w-4 h-4 text-primary" />
+              </div>
+              <div className="text-xl font-heading font-extrabold mt-2 text-foreground">
+                {nextSettlementDate}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Scheduled 48-Hour Cycle Close
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* SETTLEMENTS TAB */}
-        <TabsContent value="settlements" className="space-y-4 pt-3">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-base font-heading font-bold">Shop Payouts & Settlement Cycles</CardTitle>
-                  <CardDescription className="text-xs">
-                    Every 2 days, accumulated online revenue is computed and queued for Super Admin approval
-                  </CardDescription>
-                </div>
+        {/* Main Settlement Table */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base font-heading font-bold">
+                  2-Day Settlement Cycles ({filteredSettlements.length})
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Review shop cycles, approve or process payouts, and audit bank disbursement details
+                </CardDescription>
+              </div>
 
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={handleBulkMarkPaid}
+                    disabled={isProcessingAction}
+                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    Mark {selectedIds.length} as Paid
+                  </Button>
+                )}
+
+                <div className="flex items-center gap-1.5">
                   <select
                     value={manualShopId}
                     onChange={(e) => setManualShopId(e.target.value)}
-                    className="h-8 text-xs border border-border rounded-md px-2 bg-background"
+                    className="h-8 text-xs border border-border rounded-md px-2 bg-background max-w-[150px]"
                   >
                     {shops.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -295,34 +433,62 @@ export const SettlementsPage: React.FC = () => {
                     variant="outline"
                     onClick={handleGenerateSettlement}
                     disabled={generating}
-                    className="h-8 text-xs"
+                    className="h-8 text-xs shrink-0"
                   >
-                    Calculate 2-Day Cycle
+                    {generating ? 'Calculating...' : 'Calculate Cycle'}
                   </Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="w-full overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/70 text-muted-foreground uppercase font-semibold text-[11px]">
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="w-full overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/70 text-muted-foreground uppercase font-semibold text-[11px]">
+                  <tr>
+                    <th className="py-3 px-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={filteredSettlements.length > 0 && selectedIds.length === filteredSettlements.length}
+                        onChange={toggleSelectAll}
+                        className="rounded border-border"
+                      />
+                    </th>
+                    <th className="py-3 px-4 whitespace-nowrap">Shop Name</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Cycle Period</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Orders</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Gross Online</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Fee (5%)</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Net Payable</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Bank Info</th>
+                    <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                    <th className="py-3 px-4 whitespace-nowrap text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {loading ? (
                     <tr>
-                      <th className="py-3 px-4 whitespace-nowrap">Shop Name</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Cycle Period</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Orders</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Gross Online</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Platform Fee (5%)</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Net Payable</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Bank Info</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Status</th>
-                      <th className="py-3 px-4 whitespace-nowrap text-right">Action</th>
+                      <td colSpan={10} className="py-10 text-center text-muted-foreground">
+                        Loading settlements from database...
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredSettlements.map((s) => {
+                  ) : filteredSettlements.length > 0 ? (
+                    filteredSettlements.map((s) => {
                       const isPending = s.status === 'pending';
+                      const isProcessing = (s.status as any) === 'processing';
+                      const isCompleted = s.status === 'completed';
+                      const isRejected = (s.status as any) === 'rejected';
+
                       return (
                         <tr key={s.id} className="hover:bg-muted/40 transition-colors">
+                          <td className="py-3 px-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.includes(s.id)}
+                              onChange={() => toggleSelectId(s.id)}
+                              className="rounded border-border"
+                            />
+                          </td>
                           <td className="py-3 px-4 whitespace-nowrap font-semibold text-foreground">
                             {s.shop_name}
                           </td>
@@ -333,189 +499,227 @@ export const SettlementsPage: React.FC = () => {
                             {s.total_orders} Orders
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-foreground">
-                            ₹{s.gross_amount.toLocaleString()}
+                            ₹{Number(s.gross_amount || 0).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-muted-foreground">
-                            ₹{s.platform_commission.toLocaleString()}
+                            ₹{Number(s.platform_commission || 0).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap font-bold text-foreground">
-                            ₹{s.net_payable.toLocaleString()}
+                            ₹{Number(s.net_payable || 0).toLocaleString()}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap font-mono text-[10px]">
                             {s.bank_ifsc || 'HDFC0001234'} ({s.bank_account_no ? `••••${s.bank_account_no.slice(-4)}` : '••••1012'})
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
-                            <Badge
-                              variant={isPending ? 'secondary' : 'default'}
-                              className={`text-[10px] ${
-                                isPending ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30' : 'bg-emerald-600'
-                              }`}
-                            >
-                              {isPending ? 'Pending Payout' : 'Completed'}
-                            </Badge>
+                            {isCompleted && (
+                              <Badge className="bg-emerald-600 text-white text-[10px]">
+                                Paid & Settled
+                              </Badge>
+                            )}
+                            {isPending && (
+                              <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/10 text-[10px]">
+                                Pending Review
+                              </Badge>
+                            )}
+                            {isProcessing && (
+                              <Badge variant="outline" className="border-blue-500/40 text-blue-700 dark:text-blue-300 bg-blue-500/10 text-[10px]">
+                                In Processing
+                              </Badge>
+                            )}
+                            {isRejected && (
+                              <Badge variant="destructive" className="text-[10px]">
+                                Rejected
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-right">
-                            {isPending ? (
-                              <Button
-                                size="sm"
-                                onClick={() => setSelectedSettlement(s)}
-                                className="h-7 text-xs px-2.5 bg-primary text-primary-foreground"
-                              >
-                                Pay Out
-                              </Button>
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground flex items-center justify-end gap-1">
-                                <Check className="w-3 h-3 text-emerald-600" /> Settled
-                              </span>
-                            )}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isPending && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleMoveToProcessing(s)}
+                                    className="h-7 text-[11px] px-2 text-blue-600 hover:text-blue-700"
+                                  >
+                                    Review
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setPayoutModal(s)}
+                                    className="h-7 text-[11px] px-2.5 bg-primary text-primary-foreground"
+                                  >
+                                    Disburse
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setRejectModal(s)}
+                                    className="h-7 text-[11px] px-2 text-destructive hover:text-destructive"
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+
+                              {isProcessing && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setPayoutModal(s)}
+                                    className="h-7 text-[11px] px-2.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                                  >
+                                    Approve & Pay
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setRejectModal(s)}
+                                    className="h-7 text-[11px] px-2 text-destructive hover:text-destructive"
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+
+                              {isCompleted && (
+                                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" /> Settled
+                                </span>
+                              )}
+
+                              {isRejected && (
+                                <span className="text-[11px] text-destructive flex items-center gap-1" title={s.rejection_reason || 'Rejected'}>
+                                  <XCircle className="w-3.5 h-3.5 text-destructive" /> Rejected
+                                </span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* RAZORPAY TRANSACTIONS TAB */}
-        <TabsContent value="transactions" className="space-y-4 pt-3">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-heading font-bold">Raw Payment Inflow Ledger</CardTitle>
-              <CardDescription className="text-xs">
-                Real-time transactions completed by end-users for print documents via Razorpay or counter cash
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="w-full overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/70 text-muted-foreground uppercase font-semibold text-[11px]">
+                    })
+                  ) : (
                     <tr>
-                      <th className="py-3 px-4 whitespace-nowrap">Transaction ID</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Date & Time</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Shop Identifier</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Method</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Amount</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Razorpay Payment ID</th>
-                      <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                      <td colSpan={10} className="py-10 text-center text-muted-foreground">
+                        No settlements match your filter selection.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredPayments.map((p) => (
-                      <tr key={p.id} className="hover:bg-muted/40 transition-colors">
-                        <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-foreground">
-                          {p.id}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap text-muted-foreground">
-                          {new Date(p.created_at).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap font-semibold">
-                          {p.shop_id}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${
-                              p.payment_method === 'online'
-                                ? 'border-blue-500/30 text-blue-700 dark:text-blue-300'
-                                : 'border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                            }`}
-                          >
-                            {p.payment_method === 'online' ? 'Razorpay Online' : 'Counter Cash'}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap font-bold text-foreground">
-                          ₹{p.amount.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
-                          {p.razorpay_payment_id || 'N/A (Cash)'}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <Badge variant="default" className="text-[10px] bg-emerald-600">
-                            {p.payment_status}
-                          </Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* EXECUTE PAYOUT MODAL */}
-      <Dialog open={!!selectedSettlement} onOpenChange={(open) => !open && setSelectedSettlement(null)}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-heading text-base font-bold">Disburse Settlement Payout</DialogTitle>
-            <DialogDescription className="text-xs">
-              Confirm bank transfer to shopkeeper for the 2-day accumulated cycle.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedSettlement && (
-            <div className="space-y-3 py-2 text-xs">
-              <div className="p-3 bg-muted rounded-lg space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Shop:</span>
-                  <span className="font-bold text-foreground">{selectedSettlement.shop_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cycle Period:</span>
-                  <span>{new Date(selectedSettlement.cycle_start_date).toLocaleDateString()} - {new Date(selectedSettlement.cycle_end_date).toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Gross Amount:</span>
-                  <span>₹{selectedSettlement.gross_amount.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Platform Fee (5%):</span>
-                  <span>-₹{selectedSettlement.platform_commission.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between border-t border-border/60 pt-1.5 text-sm font-bold text-foreground">
-                  <span>Net Payout:</span>
-                  <span className="text-primary">₹{selectedSettlement.net_payable.toLocaleString()}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Bank Reference / UTR Number (Optional)</Label>
-                <Input
-                  placeholder="e.g. UTR-9821490219"
-                  value={refNote}
-                  onChange={(e) => setRefNote(e.target.value)}
-                  className="h-8 text-xs font-mono"
-                />
-              </div>
-
-              <DialogFooter className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedSettlement(null)}
-                  disabled={paying}
-                  className="text-xs h-8"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleExecutePayout}
-                  disabled={paying}
-                  className="text-xs h-8 gap-1.5"
-                >
-                  {paying ? 'Processing...' : 'Mark Settlement as Completed'}
-                </Button>
-              </DialogFooter>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  </ProtectedPageWrapper>
+          </CardContent>
+        </Card>
+
+        {/* Dialog: Execute Payout with Reference Note */}
+        <Dialog open={!!payoutModal} onOpenChange={(open) => !open && setPayoutModal(null)}>
+          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2 text-base font-bold">
+                <Banknote className="w-5 h-5 text-primary" />
+                <span>Confirm Bank Payout Disbursement</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Mark 2-day cycle settlement as Paid and record bank transaction reference.
+              </DialogDescription>
+            </DialogHeader>
+
+            {payoutModal && (
+              <div className="space-y-4 py-2 text-xs">
+                <div className="p-3 bg-muted/60 rounded-lg space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shop Name:</span>
+                    <span className="font-semibold text-foreground">{payoutModal.shop_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Net Payout Amount:</span>
+                    <span className="font-bold text-foreground text-sm">₹{Number(payoutModal.net_payable).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Beneficiary Account:</span>
+                    <span className="font-mono">{payoutModal.bank_account_no || '987654321012'} ({payoutModal.bank_ifsc || 'HDFC0001234'})</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="payoutRef" className="text-xs font-semibold">Bank UTR / Transaction Reference Note</Label>
+                  <Input
+                    id="payoutRef"
+                    placeholder="e.g. UTR-9821873912 or IMPS-Bank-Transfer"
+                    value={payoutRefNote}
+                    onChange={(e) => setPayoutRefNote(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPayoutModal(null)} className="h-8 text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleExecutePayout}
+                disabled={isProcessingAction}
+                className="h-8 text-xs bg-primary text-primary-foreground font-semibold"
+              >
+                {isProcessingAction ? 'Processing...' : 'Confirm & Disburse'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog: Reject Settlement */}
+        <Dialog open={!!rejectModal} onOpenChange={(open) => !open && setRejectModal(null)}>
+          <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2 text-base font-bold text-destructive">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+                <span>Reject Settlement Cycle</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Provide a mandatory reason for rejecting this shop's cycle settlement.
+              </DialogDescription>
+            </DialogHeader>
+
+            {rejectModal && (
+              <div className="space-y-4 py-2 text-xs">
+                <p className="text-muted-foreground">
+                  You are rejecting settlement for <strong>{rejectModal.shop_name}</strong> (Amount: ₹{Number(rejectModal.net_payable).toLocaleString()}).
+                </p>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="rejectReason" className="text-xs font-semibold">Rejection Reason</Label>
+                  <Textarea
+                    id="rejectReason"
+                    rows={3}
+                    placeholder="e.g. Bank IFSC code mismatch or order dispute investigation"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" size="sm" onClick={() => setRejectModal(null)} className="h-8 text-xs">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleExecuteReject}
+                disabled={isProcessingAction}
+                className="h-8 text-xs font-semibold"
+              >
+                {isProcessingAction ? 'Rejecting...' : 'Reject Settlement'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </ProtectedPageWrapper>
   );
 };

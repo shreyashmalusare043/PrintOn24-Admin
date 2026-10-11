@@ -146,6 +146,9 @@ export interface ShopSettlement {
   bank_account_no?: string | null;
   bank_ifsc?: string | null;
   paid_at?: string | null;
+  payout_reference?: string | null;
+  rejection_reason?: string | null;
+  payment_mode?: string | null;
   created_at: string;
 }
 
@@ -238,6 +241,34 @@ export interface CareerApplication {
   status: string;
   created_at: string;
   career_title?: string;
+}
+
+export interface HomeBanner {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  image_url: string;
+  button_text?: string | null;
+  button_link?: string | null;
+  destination_url?: string | null;
+  display_order: number;
+  sort_order?: number | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UploadPageAd {
+  id: string;
+  title: string;
+  description?: string | null;
+  image_url: string;
+  destination_url?: string | null;
+  display_order: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CMSContent {
@@ -339,6 +370,15 @@ export interface AdRequest {
   created_at: string;
 }
 
+export interface DailyPaymentBreakdown {
+  date: string;
+  displayDate: string;
+  upi: number;
+  online: number;
+  counter: number;
+  total: number;
+}
+
 export interface OverallPlatformStats {
   totalUsers: number;
   totalConnectedShops: number;
@@ -351,10 +391,12 @@ export interface OverallPlatformStats {
   totalRevenue: number;
   onlinePaymentsAmount: number;
   counterPaymentsAmount: number;
+  upiPaymentsAmount: number;
   pendingSettlementsCount: number;
   pendingSettlementsAmount: number;
   completedSettlementsCount: number;
   completedSettlementsAmount: number;
+  dailyRevenueBreakdown: DailyPaymentBreakdown[];
   shopRevenueList: {
     shopId: string;
     shopName: string;
