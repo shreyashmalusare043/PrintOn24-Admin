@@ -1,0 +1,1 @@
+ALTER TABLE informational_pages ADD COLUMN IF NOT EXISTS meta_description TEXT DEFAULT '';
