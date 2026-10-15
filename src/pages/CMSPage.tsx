@@ -1,26 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import {
-  fetchInformationalPages,
-  saveInformationalPage,
+  fetchAboutUsSections,
+  saveAboutUsSection,
+  fetchPlatformPolicies,
+  savePlatformPolicy,
+  fetchPlatformTerms,
+  savePlatformTerms,
   fetchCMSContent,
   saveCMSContent,
   deleteCMSContent
 } from '@/services/api';
-import type { InformationalPage, CMSContent } from '@/types/types';
+import type { PlatformPolicy, PlatformTerms, CMSContent } from '@/types/types';
 import {
   FileText,
-  Plus,
-  Check,
+  ShieldCheck,
+  Scale,
   RefreshCw,
+  Save,
+  Eye,
+  CheckCircle2,
+  AlertCircle,
+  Plus,
   Trash2,
   Megaphone,
-  BookOpen,
-  Eye,
-  ExternalLink,
-  Save,
-  Globe,
-  ShieldCheck,
-  Sparkles
+  Sparkles,
+  Send
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,9 +32,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -39,640 +42,939 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog';
-import { RichTextEditor } from '@/components/cms/RichTextEditor';
 import { toast } from 'sonner';
 
 export const CMSPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'policy_pages' | 'marketing_banners'>('policy_pages');
+  const [activeTab, setActiveTab] = useState<'about' | 'privacy' | 'terms' | 'announcements'>('about');
+  const [loading, setLoading] = useState(true);
 
-  // Informational Pages state
-  const [pages, setPages] = useState<InformationalPage[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState<string>('about_us');
-  const [selectedPage, setSelectedPage] = useState<Partial<InformationalPage>>({
-    slug: 'about_us',
-    title: 'About Us',
-    meta_description: '',
-    content_html: '',
-    is_published: true
-  });
-  const [loadingPages, setLoadingPages] = useState(true);
-  const [savingPage, setSavingPage] = useState(false);
-
-  // Promotional Content state
-  const [contentList, setContentList] = useState<CMSContent[]>([]);
-  const [loadingContent, setLoadingContent] = useState(true);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingContent, setEditingContent] = useState<Partial<CMSContent>>({
-    category: 'banner',
+  // 1. About Us (cms_content)
+  const [aboutSections, setAboutSections] = useState<CMSContent[]>([]);
+  const [selectedAboutId, setSelectedAboutId] = useState<string>('about_hero');
+  const [editingAbout, setEditingAbout] = useState<{
+    id: string;
+    title: string;
+    subtitle: string;
+    content: string;
+    is_active: boolean;
+  }>({
+    id: 'about_hero',
     title: '',
     subtitle: '',
     content: '',
+    is_active: true
+  });
+  const [aboutMode, setAboutMode] = useState<'edit' | 'preview'>('edit');
+  const [savingAbout, setSavingAbout] = useState(false);
+
+  // 2. Privacy Policies (platform_policies)
+  const [policies, setPolicies] = useState<PlatformPolicy[]>([]);
+  const [editingPolicy, setEditingPolicy] = useState<PlatformPolicy>({
+    id: 'pol_01',
+    title: 'printOn24 Customer Privacy & Data Protection Policy',
+    content: '',
+    version: 'v2.6',
+    published_at: null,
+    is_active: true
+  });
+  const [policyMode, setPolicyMode] = useState<'edit' | 'preview'>('edit');
+  const [savingPolicy, setSavingPolicy] = useState(false);
+
+  // 3. Terms & Conditions (platform_terms)
+  const [terms, setTerms] = useState<PlatformTerms[]>([]);
+  const [editingTerms, setEditingTerms] = useState<PlatformTerms>({
+    id: 'trm_01',
+    title: 'printOn24 Platform Terms of Service & Printing Agreement',
+    content: '',
+    version: 'v2.6',
+    published_at: null,
+    is_active: true
+  });
+  const [termsMode, setTermsMode] = useState<'edit' | 'preview'>('edit');
+  const [savingTerms, setSavingTerms] = useState(false);
+
+  // 4. Announcements & Notices (cms_content)
+  const [announcements, setAnnouncements] = useState<CMSContent[]>([]);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Partial<CMSContent>>({
+    title: '',
+    subtitle: '',
+    content: '',
+    category: 'announcement',
     target_audience: 'all',
     badge_text: '',
-    is_active: true,
-    display_order: 1
+    is_active: true
   });
-  const [submittingContent, setSubmittingContent] = useState(false);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
-  // New Page creation modal
-  const [newPageModalOpen, setNewPageModalOpen] = useState(false);
-  const [newPageSlug, setNewPageSlug] = useState('');
-  const [newPageTitle, setNewPageTitle] = useState('');
-
-  // Live preview modal
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-
-  const loadInformationalPages = async () => {
-    setLoadingPages(true);
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const data = await fetchInformationalPages();
-      setPages(data);
-      if (data.length > 0) {
-        const found = data.find((p) => p.slug === selectedSlug) || data[0];
-        setSelectedSlug(found.slug);
-        setSelectedPage(found);
+      const [aboutData, policyData, termsData, cmsData] = await Promise.all([
+        fetchAboutUsSections(),
+        fetchPlatformPolicies(),
+        fetchPlatformTerms(),
+        fetchCMSContent('announcement')
+      ]);
+
+      // Set About Us
+      setAboutSections(aboutData);
+      if (aboutData.length > 0) {
+        const current = aboutData.find((a) => a.id === selectedAboutId) || aboutData[0];
+        setSelectedAboutId(current.id);
+        setEditingAbout({
+          id: current.id,
+          title: current.title,
+          subtitle: current.subtitle || '',
+          content: current.content || '',
+          is_active: current.is_active
+        });
       }
-    } catch (err: any) {
-      toast.error('Failed to load informational pages');
-    } finally {
-      setLoadingPages(false);
-    }
-  };
 
-  const loadContent = async () => {
-    setLoadingContent(true);
-    try {
-      const data = await fetchCMSContent();
-      setContentList(data);
-    } catch (err) {
-      toast.error('Failed to load CMS content');
+      // Set Privacy Policies
+      setPolicies(policyData);
+      if (policyData.length > 0) {
+        setEditingPolicy(policyData[0]);
+      }
+
+      // Set Terms
+      setTerms(termsData);
+      if (termsData.length > 0) {
+        setEditingTerms(termsData[0]);
+      }
+
+      // Set Announcements
+      setAnnouncements(cmsData);
+    } catch (err: any) {
+      toast.error('Failed to load CMS content: ' + (err.message || 'Network error'));
     } finally {
-      setLoadingContent(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadInformationalPages();
-    loadContent();
+    loadData();
   }, []);
 
-  const handleSelectPage = (slug: string) => {
-    setSelectedSlug(slug);
-    const found = pages.find((p) => p.slug === slug);
-    if (found) {
-      setSelectedPage({ ...found });
-    }
-  };
-
-  const handleSavePage = async () => {
-    if (!selectedPage.title?.trim() || !selectedPage.slug?.trim()) {
-      toast.error('Title and slug cannot be empty');
-      return;
-    }
-
-    setSavingPage(true);
-    try {
-      await saveInformationalPage({
-        slug: selectedPage.slug,
-        title: selectedPage.title.trim(),
-        meta_description: selectedPage.meta_description || '',
-        content_html: selectedPage.content_html || '',
-        is_published: selectedPage.is_published ?? true
+  // When about section selection changes
+  const handleSelectAboutSection = (id: string) => {
+    setSelectedAboutId(id);
+    const item = aboutSections.find((a) => a.id === id);
+    if (item) {
+      setEditingAbout({
+        id: item.id,
+        title: item.title,
+        subtitle: item.subtitle || '',
+        content: item.content || '',
+        is_active: item.is_active
       });
-
-      toast.success(`"${selectedPage.title}" saved and published successfully!`);
-      await loadInformationalPages();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save informational page');
-    } finally {
-      setSavingPage(false);
     }
   };
 
-  const handleCreateNewPage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPageTitle.trim() || !newPageSlug.trim()) {
-      toast.error('Please enter page title and URL slug');
+  // Save About Section
+  const handleSaveAbout = async (publishStatus?: boolean) => {
+    if (!editingAbout.title.trim()) {
+      toast.error('Please enter a section title');
       return;
     }
-
-    const cleanSlug = newPageSlug.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    setSavingPage(true);
+    setSavingAbout(true);
+    const updatedStatus = publishStatus !== undefined ? publishStatus : editingAbout.is_active;
     try {
-      await saveInformationalPage({
-        slug: cleanSlug,
-        title: newPageTitle.trim(),
-        meta_description: `Official ${newPageTitle} documentation for PrintOn24`,
-        content_html: `<h2>${newPageTitle}</h2><p>Welcome to the official ${newPageTitle} page. Content is maintained dynamically by the Super Administrator.</p>`,
-        is_published: true
+      await saveAboutUsSection({
+        id: editingAbout.id,
+        title: editingAbout.title.trim(),
+        subtitle: editingAbout.subtitle.trim() || undefined,
+        content: editingAbout.content,
+        is_active: updatedStatus
       });
-
-      toast.success('New informational page created!');
-      setNewPageModalOpen(false);
-      setNewPageSlug('');
-      setNewPageTitle('');
-      setSelectedSlug(cleanSlug);
-      await loadInformationalPages();
+      setEditingAbout((prev) => ({ ...prev, is_active: updatedStatus }));
+      setAboutSections((prev) =>
+        prev.map((a) =>
+          a.id === editingAbout.id
+            ? { ...a, title: editingAbout.title, subtitle: editingAbout.subtitle, content: editingAbout.content, is_active: updatedStatus }
+            : a
+        )
+      );
+      toast.success(
+        publishStatus === true
+          ? 'Section published to User Panel About page (cms_content)!'
+          : publishStatus === false
+          ? 'Section unpublished from User Panel'
+          : 'About section changes saved to cms_content table!'
+      );
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create page');
+      toast.error('Failed to save to cms_content: ' + (err.message || 'Database error'));
     } finally {
-      setSavingPage(false);
+      setSavingAbout(false);
     }
   };
 
-  // Marketing content methods
-  const handleOpenCreateContent = () => {
-    setEditingContent({
-      category: 'banner',
-      title: '',
-      subtitle: '',
-      content: '',
-      target_audience: 'all',
-      badge_text: 'NEW',
-      is_active: true,
-      display_order: 1
-    });
-    setModalOpen(true);
-  };
-
-  const handleSaveContent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingContent.title || !editingContent.category) {
-      toast.error('Please enter title and category');
+  // Save Privacy Policy
+  const handleSavePolicy = async (publishStatus?: boolean) => {
+    if (!editingPolicy.title.trim() || !editingPolicy.content.trim()) {
+      toast.error('Please provide a policy title and content');
       return;
     }
+    setSavingPolicy(true);
+    const updatedStatus = publishStatus !== undefined ? publishStatus : editingPolicy.is_active;
+    const now = new Date().toISOString();
+    try {
+      await savePlatformPolicy({
+        ...editingPolicy,
+        title: editingPolicy.title.trim(),
+        is_active: updatedStatus,
+        published_at: updatedStatus ? now : editingPolicy.published_at
+      });
+      setEditingPolicy((prev) => ({
+        ...prev,
+        is_active: updatedStatus,
+        published_at: updatedStatus ? now : prev.published_at
+      }));
+      toast.success(
+        publishStatus === true
+          ? 'Privacy Policy successfully published to User Panel (platform_policies)!'
+          : publishStatus === false
+          ? 'Privacy Policy unpublished from User Panel'
+          : 'Privacy Policy saved to platform_policies table!'
+      );
+    } catch (err: any) {
+      toast.error('Failed to save to platform_policies: ' + (err.message || 'Database error'));
+    } finally {
+      setSavingPolicy(false);
+    }
+  };
 
-    setSubmittingContent(true);
+  // Save Terms and Conditions
+  const handleSaveTerms = async (publishStatus?: boolean) => {
+    if (!editingTerms.title.trim() || !editingTerms.content.trim()) {
+      toast.error('Please provide terms title and content');
+      return;
+    }
+    setSavingTerms(true);
+    const updatedStatus = publishStatus !== undefined ? publishStatus : editingTerms.is_active;
+    const now = new Date().toISOString();
+    try {
+      await savePlatformTerms({
+        ...editingTerms,
+        title: editingTerms.title.trim(),
+        is_active: updatedStatus,
+        published_at: updatedStatus ? now : editingTerms.published_at
+      });
+      setEditingTerms((prev) => ({
+        ...prev,
+        is_active: updatedStatus,
+        published_at: updatedStatus ? now : prev.published_at
+      }));
+      toast.success(
+        publishStatus === true
+          ? 'Terms & Conditions successfully published to User Panel (platform_terms)!'
+          : publishStatus === false
+          ? 'Terms & Conditions unpublished from User Panel'
+          : 'Terms & Conditions saved to platform_terms table!'
+      );
+    } catch (err: any) {
+      toast.error('Failed to save to platform_terms: ' + (err.message || 'Database error'));
+    } finally {
+      setSavingTerms(false);
+    }
+  };
+
+  // Save Announcement
+  const handleSaveAnnouncement = async () => {
+    if (!editingAnnouncement.title?.trim() || !editingAnnouncement.content?.trim()) {
+      toast.error('Please enter announcement title and content');
+      return;
+    }
+    setSavingAnnouncement(true);
     try {
       await saveCMSContent({
-        ...editingContent,
-        title: editingContent.title,
-        category: editingContent.category as any
-      });
-      toast.success('CMS content saved successfully');
-      setModalOpen(false);
-      loadContent();
-    } catch (err) {
-      toast.error('Failed to save content');
+        ...editingAnnouncement,
+        title: editingAnnouncement.title.trim(),
+        content: editingAnnouncement.content.trim(),
+        category: 'announcement'
+      } as any);
+      toast.success('Announcement synced to cms_content table!');
+      setAnnouncementModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      toast.error('Failed to save announcement');
     } finally {
-      setSubmittingContent(false);
+      setSavingAnnouncement(false);
     }
   };
 
-  const handleDeleteContent = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this content?')) return;
+  const handleDeleteAnnouncement = async (id: string) => {
     try {
       await deleteCMSContent(id);
-      setContentList((prev) => prev.filter((c) => c.id !== id));
-      toast.success('Content deleted');
+      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+      toast.success('Announcement removed from cms_content table');
     } catch (err) {
-      toast.error('Failed to delete content');
+      toast.error('Failed to delete announcement');
     }
   };
-
-  const filteredContent = contentList.filter((c) => categoryFilter === 'all' || c.category === categoryFilter);
 
   return (
     <div className="space-y-6">
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card border border-border p-4 md:p-6 rounded-xl shadow-sm">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-lg bg-primary/10 text-primary">
-              <BookOpen className="w-5 h-5" />
-            </span>
-            <h2 className="text-xl md:text-2xl font-heading font-bold text-foreground">
-              Dynamic CMS & Informational Pages
-            </h2>
-          </div>
-          <p className="text-xs md:text-sm text-muted-foreground mt-1.5">
-            Manage rich-text policy documents (About Us, Privacy Policy, Terms) and marketing announcements rendered across User and Shopkeeper panels.
+          <h2 className="text-xl md:text-2xl font-heading font-bold text-foreground">
+            Dynamic Pages & CMS Management
+          </h2>
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">
+            Author and publish content directly to production database tables: About Us (<code>cms_content</code>), Privacy Policies (<code>platform_policies</code>), and Terms & Conditions (<code>platform_terms</code>).
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              loadInformationalPages();
-              loadContent();
-            }}
-            disabled={loadingPages || loadingContent}
-            className="h-9 gap-1.5 text-xs"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingPages || loadingContent ? 'animate-spin' : ''}`} />
+        <div className="flex items-center space-x-2 shrink-0">
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-9 gap-1.5 text-xs">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
       </div>
 
       {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)}>
-        <TabsList className="h-9">
-          <TabsTrigger value="policy_pages" className="text-xs flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5" />
-            Informational & Policy Pages ({pages.length})
+      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-4 h-10 text-xs w-full max-w-2xl bg-muted/60 p-1">
+          <TabsTrigger value="about" className="text-xs gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-primary" /> About PrintOn24
           </TabsTrigger>
-          <TabsTrigger value="marketing_banners" className="text-xs flex items-center gap-1.5">
-            <Megaphone className="w-3.5 h-3.5" />
-            Promotional & Alert Notices ({contentList.length})
+          <TabsTrigger value="privacy" className="text-xs gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Privacy Policies
+          </TabsTrigger>
+          <TabsTrigger value="terms" className="text-xs gap-1.5">
+            <Scale className="w-3.5 h-3.5 text-blue-600" /> Terms & Conditions
+          </TabsTrigger>
+          <TabsTrigger value="announcements" className="text-xs gap-1.5">
+            <Megaphone className="w-3.5 h-3.5 text-amber-600" /> System Notices
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: INFORMATIONAL PAGES WITH RICH-TEXT EDITOR */}
-        <TabsContent value="policy_pages" className="space-y-4 pt-2">
+        {/* ======================================================== */}
+        {/* 1. ABOUT PRINTON24 (cms_content) */}
+        {/* ======================================================== */}
+        <TabsContent value="about" className="space-y-4 pt-3">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* Sidebar List of Pages */}
-            <Card className="lg:col-span-1 shadow-sm border border-border h-fit">
-              <CardHeader className="p-4 pb-2 border-b border-border">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-heading font-bold">Document Library</CardTitle>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setNewPageModalOpen(true)}
-                    className="h-7 text-xs px-2 text-primary hover:bg-primary/10 gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> New Page
-                  </Button>
-                </div>
-                <CardDescription className="text-[11px]">
-                  Select an official document to edit
+            {/* Section Selector Sidebar */}
+            <Card className="lg:col-span-1 shadow-sm h-fit">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-sm font-heading font-bold">About Us Sections</CardTitle>
+                <CardDescription className="text-xs">
+                  Connected to <code>cms_content</code>
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-2 space-y-1">
-                {pages.map((p) => {
-                  const isSelected = p.slug === selectedSlug;
-                  return (
-                    <button
-                      key={p.slug}
-                      type="button"
-                      onClick={() => handleSelectPage(p.slug)}
-                      className={`w-full text-left p-2.5 rounded-lg text-xs transition-colors flex items-center justify-between ${
-                        isSelected
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                          : 'hover:bg-muted text-foreground'
+                {aboutSections.map((sec) => (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    onClick={() => handleSelectAboutSection(sec.id)}
+                    className={`w-full text-left p-2.5 rounded-lg text-xs transition-colors flex items-center justify-between ${
+                      selectedAboutId === sec.id
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                        : 'hover:bg-muted/70 text-foreground'
+                    }`}
+                  >
+                    <span className="truncate pr-2">{sec.title || sec.id}</span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] px-1.5 shrink-0 ${
+                        selectedAboutId === sec.id
+                          ? 'border-primary-foreground/30 text-primary-foreground'
+                          : sec.is_active
+                          ? 'border-emerald-500 text-emerald-600'
+                          : 'border-muted-foreground text-muted-foreground'
                       }`}
                     >
-                      <div className="truncate pr-2">
-                        <div className="truncate">{p.title}</div>
-                        <div className={`text-[10px] font-mono truncate ${isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                          /pages/{p.slug}
-                        </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={`text-[9px] px-1.5 py-0 shrink-0 ${
-                          isSelected
-                            ? 'border-primary-foreground/40 text-primary-foreground'
-                            : p.is_published
-                            ? 'border-emerald-500/40 text-emerald-600 bg-emerald-500/10'
-                            : 'border-muted text-muted-foreground'
-                        }`}
-                      >
-                        {p.is_published ? 'Live' : 'Draft'}
-                      </Badge>
-                    </button>
-                  );
-                })}
+                      {sec.is_active ? 'Active' : 'Draft'}
+                    </Badge>
+                  </button>
+                ))}
               </CardContent>
             </Card>
 
-            {/* Document Editor Area */}
-            <div className="lg:col-span-3 space-y-4">
-              <Card className="shadow-sm border border-border">
-                <CardHeader className="p-4 md:p-6 pb-4 border-b border-border">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-lg font-heading font-bold text-foreground">
-                          {selectedPage.title || 'Edit Page'}
-                        </CardTitle>
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          Slug: {selectedPage.slug}
-                        </Badge>
-                      </div>
-                      <CardDescription className="text-xs mt-1">
-                        Formatted WYSIWYG editor. Supported formatting: headings, custom fonts, font sizes, alignment, lists, and links.
-                      </CardDescription>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPreviewModalOpen(true)}
-                        className="h-8 text-xs gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> Client Preview
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleSavePage}
-                        disabled={savingPage}
-                        className="h-8 text-xs gap-1.5 shadow-sm"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        {savingPage ? 'Publishing...' : 'Save & Publish Page'}
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4 md:p-6 space-y-4">
-                  {/* Meta Settings */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-muted/30 rounded-lg border border-border/60">
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold">Page Title</Label>
-                      <Input
-                        value={selectedPage.title || ''}
-                        onChange={(e) => setSelectedPage({ ...selectedPage, title: e.target.value })}
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs font-semibold">SEO Meta Description</Label>
-                      <Input
-                        value={selectedPage.meta_description || ''}
-                        onChange={(e) => setSelectedPage({ ...selectedPage, meta_description: e.target.value })}
-                        placeholder="Brief summary shown on search engines and share links"
-                        className="h-8 text-xs"
-                      />
-                    </div>
-                    <div className="flex items-center space-x-2 md:col-span-2 pt-1">
-                      <Switch
-                        id="publish-toggle"
-                        checked={selectedPage.is_published ?? true}
-                        onCheckedChange={(checked) => setSelectedPage({ ...selectedPage, is_published: checked })}
-                      />
-                      <Label htmlFor="publish-toggle" className="text-xs font-medium cursor-pointer">
-                        Publicly published (accessible by users, shopkeepers, and visitors)
-                      </Label>
-                    </div>
-                  </div>
-
-                  {/* Rich-Text Editor Component */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold flex items-center justify-between">
-                      <span>Document Rich-Text Content</span>
-                      <span className="text-[11px] text-muted-foreground font-normal">
-                        Changes are automatically stored and rendered in real time
-                      </span>
-                    </Label>
-                    <RichTextEditor
-                      value={selectedPage.content_html || ''}
-                      onChange={(html) => setSelectedPage({ ...selectedPage, content_html: html })}
-                      placeholder="Start typing your policy or informational document..."
-                      minHeight="420px"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* TAB 2: PROMOTIONAL & ALERT NOTICES (EXISTING CMS) */}
-        <TabsContent value="marketing_banners" className="space-y-4 pt-2">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            {/* Content Editor */}
+            <Card className="lg:col-span-3 shadow-sm flex flex-col">
+              <CardHeader className="p-4 md:p-6 pb-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <CardTitle className="text-base font-heading font-bold">Platform Content Directory</CardTitle>
-                  <CardDescription className="text-xs">
-                    Target audiences: All Users, Registered Clients, or Connected Shopkeepers
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-heading font-bold">
+                      {editingAbout.title || 'About Section Editor'}
+                    </CardTitle>
+                    <Badge variant={editingAbout.is_active ? 'default' : 'secondary'} className={`text-[10px] ${editingAbout.is_active ? 'bg-emerald-600' : ''}`}>
+                      {editingAbout.is_active ? 'Published' : 'Draft'}
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs pt-0.5">
+                    ID: <code>{editingAbout.id}</code> • Table: <code>cms_content</code>
                   </CardDescription>
                 </div>
 
+                {/* Edit / Preview Tabs & Actions */}
+                <div className="flex items-center space-x-2 shrink-0">
+                  <div className="flex border border-border rounded-lg overflow-hidden p-0.5 bg-muted/40">
+                    <Button
+                      variant={aboutMode === 'edit' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setAboutMode('edit')}
+                      className="h-7 text-xs px-2.5"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant={aboutMode === 'preview' ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setAboutMode('preview')}
+                      className="h-7 text-xs px-2.5"
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1" /> Preview
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-4 md:p-6 space-y-4 flex-1">
+                {aboutMode === 'edit' ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Section Title</Label>
+                        <Input
+                          value={editingAbout.title}
+                          onChange={(e) => setEditingAbout({ ...editingAbout, title: e.target.value })}
+                          placeholder="e.g. Digitizing Campus Printing Across India"
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Subtitle / Tagline</Label>
+                        <Input
+                          value={editingAbout.subtitle}
+                          onChange={(e) => setEditingAbout({ ...editingAbout, subtitle: e.target.value })}
+                          placeholder="Optional subtitle or badge"
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold">Section Content</Label>
+                        <span className="text-[11px] text-muted-foreground font-mono">
+                          {editingAbout.content.length} characters
+                        </span>
+                      </div>
+                      <Textarea
+                        value={editingAbout.content}
+                        onChange={(e) => setEditingAbout({ ...editingAbout, content: e.target.value })}
+                        rows={14}
+                        placeholder="Enter the section content or narrative description..."
+                        className="text-xs font-mono leading-relaxed resize-y min-h-[300px] bg-background"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Preview Mode */
+                  <div className="p-6 rounded-xl border border-border bg-muted/20 space-y-4 min-h-[350px]">
+                    <div className="border-b border-border pb-3">
+                      <Badge variant="outline" className="text-[10px] mb-2">
+                        {editingAbout.subtitle || 'About PrintOn24'}
+                      </Badge>
+                      <h3 className="text-lg md:text-xl font-heading font-bold text-foreground">
+                        {editingAbout.title}
+                      </h3>
+                    </div>
+                    <div className="text-xs md:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed space-y-2">
+                      {editingAbout.content || (
+                        <span className="text-muted-foreground italic">No content written yet.</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+
+              {/* Bottom Actions */}
+              <div className="p-4 md:p-6 border-t border-border flex flex-wrap items-center justify-between gap-3 bg-card/60">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={editingAbout.is_active}
+                    onCheckedChange={(c) => setEditingAbout({ ...editingAbout, is_active: c })}
+                    id="about-active"
+                  />
+                  <Label htmlFor="about-active" className="text-xs text-muted-foreground cursor-pointer">
+                    Display on User Panel
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSaveAbout()}
+                    disabled={savingAbout}
+                    className="h-9 text-xs gap-1.5"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Save Changes
+                  </Button>
+                  {editingAbout.is_active ? (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleSaveAbout(false)}
+                      disabled={savingAbout}
+                      className="h-9 text-xs"
+                    >
+                      Unpublish
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveAbout(true)}
+                      disabled={savingAbout}
+                      className="h-9 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Publish to User Panel
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ======================================================== */}
+        {/* 2. PRIVACY POLICIES (platform_policies) */}
+        {/* ======================================================== */}
+        <TabsContent value="privacy" className="space-y-4 pt-3">
+          <Card className="shadow-sm">
+            <CardHeader className="p-4 md:p-6 pb-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
                 <div className="flex items-center gap-2">
-                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                    <SelectTrigger className="w-44 h-8 text-xs">
-                      <SelectValue placeholder="All Categories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      <SelectItem value="banner">Promotional Banners</SelectItem>
-                      <SelectItem value="announcement">Announcements</SelectItem>
-                      <SelectItem value="notice">Notices & Alerts</SelectItem>
-                      <SelectItem value="faq">Platform FAQs</SelectItem>
-                      <SelectItem value="app_config">App Configurations</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button size="sm" onClick={handleOpenCreateContent} className="h-8 gap-1.5 text-xs">
-                    <Plus className="w-3.5 h-3.5" />
-                    Add Notice
+                  <CardTitle className="text-base font-heading font-bold flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    {editingPolicy.title}
+                  </CardTitle>
+                  <Badge variant={editingPolicy.is_active ? 'default' : 'secondary'} className={`text-[10px] ${editingPolicy.is_active ? 'bg-emerald-600' : ''}`}>
+                    {editingPolicy.is_active ? 'Published' : 'Draft'}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {editingPolicy.version}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs pt-0.5">
+                  Connected directly to <code>platform_policies</code> • Last Published:{' '}
+                  {editingPolicy.published_at
+                    ? new Date(editingPolicy.published_at).toLocaleString()
+                    : 'Not published yet'}
+                </CardDescription>
+              </div>
+
+              {/* Edit / Preview Tabs */}
+              <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex border border-border rounded-lg overflow-hidden p-0.5 bg-muted/40">
+                  <Button
+                    variant={policyMode === 'edit' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setPolicyMode('edit')}
+                    className="h-7 text-xs px-2.5"
+                  >
+                    Edit Content
+                  </Button>
+                  <Button
+                    variant={policyMode === 'preview' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setPolicyMode('preview')}
+                    className="h-7 text-xs px-2.5"
+                  >
+                    <Eye className="w-3.5 h-3.5 mr-1" /> Live Preview
                   </Button>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredContent.map((item) => (
-                  <Card key={item.id} className="border shadow-sm flex flex-col justify-between">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <Badge variant="outline" className="text-[10px] capitalize bg-muted font-mono">
-                          {item.category}
-                        </Badge>
-                        <Badge variant={item.is_active ? 'default' : 'secondary'} className={`text-[10px] ${item.is_active ? 'bg-emerald-600' : ''}`}>
-                          {item.is_active ? 'Active' : 'Disabled'}
-                        </Badge>
-                      </div>
-                      <CardTitle className="text-sm font-heading font-bold pt-1">{item.title}</CardTitle>
-                      {item.subtitle && <CardDescription className="text-xs">{item.subtitle}</CardDescription>}
-                    </CardHeader>
-                    <CardContent className="space-y-2 flex-1 text-xs text-muted-foreground">
-                      <p className="line-clamp-3">{item.content}</p>
-                      <div className="flex items-center justify-between text-[10px] pt-2 border-t border-border/50">
-                        <span>Audience: <strong>{item.target_audience}</strong></span>
-                        <span>Order: <strong>#{item.display_order}</strong></span>
-                      </div>
-                    </CardContent>
-                    <div className="p-3 pt-0 border-t border-border/40 mt-auto flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteContent(item.id)}
-                        className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+
+            <CardContent className="p-4 md:p-6 space-y-4">
+              {policyMode === 'edit' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2 space-y-1.5">
+                      <Label className="text-xs font-semibold">Document Title</Label>
+                      <Input
+                        value={editingPolicy.title}
+                        onChange={(e) => setEditingPolicy({ ...editingPolicy, title: e.target.value })}
+                        className="h-9 text-xs"
+                      />
                     </div>
-                  </Card>
-                ))}
-              </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Version</Label>
+                      <Input
+                        value={editingPolicy.version}
+                        onChange={(e) => setEditingPolicy({ ...editingPolicy, version: e.target.value })}
+                        placeholder="v2.6"
+                        className="h-9 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Privacy Policy Content</Label>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {editingPolicy.content.length} characters • Clean structured text
+                      </span>
+                    </div>
+                    <Textarea
+                      value={editingPolicy.content}
+                      onChange={(e) => setEditingPolicy({ ...editingPolicy, content: e.target.value })}
+                      rows={18}
+                      placeholder="Enter policy sections and clauses..."
+                      className="text-xs font-mono leading-relaxed resize-y min-h-[420px] bg-background"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Live Preview */
+                <div className="p-6 rounded-xl border border-border bg-card space-y-6 min-h-[450px]">
+                  <div className="border-b border-border pb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="outline" className="text-xs border-emerald-500/40 text-emerald-600 bg-emerald-500/5">
+                        Legal Policy • {editingPolicy.version}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Published: {editingPolicy.published_at ? new Date(editingPolicy.published_at).toLocaleDateString() : 'Draft'}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-heading font-bold text-foreground">
+                      {editingPolicy.title}
+                    </h2>
+                  </div>
+                  <div className="text-xs md:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed space-y-4">
+                    {editingPolicy.content}
+                  </div>
+                </div>
+              )}
             </CardContent>
+
+            {/* Policy Actions */}
+            <div className="p-4 md:p-6 border-t border-border flex flex-wrap items-center justify-between gap-3 bg-card/60">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={editingPolicy.is_active}
+                  onCheckedChange={(c) => setEditingPolicy({ ...editingPolicy, is_active: c })}
+                  id="policy-active"
+                />
+                <Label htmlFor="policy-active" className="text-xs text-muted-foreground cursor-pointer">
+                  Active in User Panel Privacy Page
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSavePolicy()}
+                  disabled={savingPolicy}
+                  className="h-9 text-xs gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" /> Save Changes
+                </Button>
+                {editingPolicy.is_active ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleSavePolicy(false)}
+                    disabled={savingPolicy}
+                    className="h-9 text-xs"
+                  >
+                    Unpublish
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => handleSavePolicy(true)}
+                    disabled={savingPolicy}
+                    className="h-9 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Publish to User Panel
+                  </Button>
+                )}
+              </div>
+            </div>
           </Card>
+        </TabsContent>
+
+        {/* ======================================================== */}
+        {/* 3. TERMS & CONDITIONS (platform_terms) */}
+        {/* ======================================================== */}
+        <TabsContent value="terms" className="space-y-4 pt-3">
+          <Card className="shadow-sm">
+            <CardHeader className="p-4 md:p-6 pb-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base font-heading font-bold flex items-center gap-2">
+                    <Scale className="w-4 h-4 text-blue-600" />
+                    {editingTerms.title}
+                  </CardTitle>
+                  <Badge variant={editingTerms.is_active ? 'default' : 'secondary'} className={`text-[10px] ${editingTerms.is_active ? 'bg-blue-600' : ''}`}>
+                    {editingTerms.is_active ? 'Published' : 'Draft'}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {editingTerms.version}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs pt-0.5">
+                  Connected directly to <code>platform_terms</code> • Last Published:{' '}
+                  {editingTerms.published_at
+                    ? new Date(editingTerms.published_at).toLocaleString()
+                    : 'Not published yet'}
+                </CardDescription>
+              </div>
+
+              {/* Edit / Preview Tabs */}
+              <div className="flex items-center space-x-2 shrink-0">
+                <div className="flex border border-border rounded-lg overflow-hidden p-0.5 bg-muted/40">
+                  <Button
+                    variant={termsMode === 'edit' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setTermsMode('edit')}
+                    className="h-7 text-xs px-2.5"
+                  >
+                    Edit Content
+                  </Button>
+                  <Button
+                    variant={termsMode === 'preview' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setTermsMode('preview')}
+                    className="h-7 text-xs px-2.5"
+                  >
+                    <Eye className="w-3.5 h-3.5 mr-1" /> Live Preview
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4 md:p-6 space-y-4">
+              {termsMode === 'edit' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2 space-y-1.5">
+                      <Label className="text-xs font-semibold">Terms Title</Label>
+                      <Input
+                        value={editingTerms.title}
+                        onChange={(e) => setEditingTerms({ ...editingTerms, title: e.target.value })}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Version</Label>
+                      <Input
+                        value={editingTerms.version}
+                        onChange={(e) => setEditingTerms({ ...editingTerms, version: e.target.value })}
+                        placeholder="v2.6"
+                        className="h-9 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Terms and Conditions Clauses</Label>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {editingTerms.content.length} characters • Clean structured text
+                      </span>
+                    </div>
+                    <Textarea
+                      value={editingTerms.content}
+                      onChange={(e) => setEditingTerms({ ...editingTerms, content: e.target.value })}
+                      rows={18}
+                      placeholder="Enter legal terms and service conditions..."
+                      className="text-xs font-mono leading-relaxed resize-y min-h-[420px] bg-background"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Live Preview */
+                <div className="p-6 rounded-xl border border-border bg-card space-y-6 min-h-[450px]">
+                  <div className="border-b border-border pb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="outline" className="text-xs border-blue-500/40 text-blue-600 bg-blue-500/5">
+                        Master Agreement • {editingTerms.version}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Published: {editingTerms.published_at ? new Date(editingTerms.published_at).toLocaleDateString() : 'Draft'}
+                      </span>
+                    </div>
+                    <h2 className="text-xl font-heading font-bold text-foreground">
+                      {editingTerms.title}
+                    </h2>
+                  </div>
+                  <div className="text-xs md:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed space-y-4">
+                    {editingTerms.content}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+
+            {/* Terms Actions */}
+            <div className="p-4 md:p-6 border-t border-border flex flex-wrap items-center justify-between gap-3 bg-card/60">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={editingTerms.is_active}
+                  onCheckedChange={(c) => setEditingTerms({ ...editingTerms, is_active: c })}
+                  id="terms-active"
+                />
+                <Label htmlFor="terms-active" className="text-xs text-muted-foreground cursor-pointer">
+                  Active in User Panel Terms Page
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSaveTerms()}
+                  disabled={savingTerms}
+                  className="h-9 text-xs gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" /> Save Changes
+                </Button>
+                {editingTerms.is_active ? (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleSaveTerms(false)}
+                    disabled={savingTerms}
+                    className="h-9 text-xs"
+                  >
+                    Unpublish
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => handleSaveTerms(true)}
+                    disabled={savingTerms}
+                    className="h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Publish to User Panel
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+
+        {/* ======================================================== */}
+        {/* 4. ANNOUNCEMENTS & NOTICES (cms_content) */}
+        {/* ======================================================== */}
+        <TabsContent value="announcements" className="space-y-4 pt-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-heading font-bold text-foreground">
+              Platform Broadcasts & Announcements (<code>cms_content</code>)
+            </h3>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditingAnnouncement({
+                  title: '',
+                  subtitle: '',
+                  content: '',
+                  category: 'announcement',
+                  target_audience: 'all',
+                  badge_text: 'Urgent',
+                  is_active: true
+                });
+                setAnnouncementModalOpen(true);
+              }}
+              className="h-8 gap-1.5 text-xs shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5" /> New Broadcast
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {announcements.map((ann) => (
+              <Card key={ann.id} className="border shadow-sm flex flex-col justify-between">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-sm font-heading font-bold">{ann.title}</CardTitle>
+                    <Badge variant={ann.is_active ? 'default' : 'secondary'} className="text-[10px]">
+                      {ann.is_active ? 'Active' : 'Hidden'}
+                    </Badge>
+                  </div>
+                  {ann.subtitle && (
+                    <CardDescription className="text-xs pt-1">{ann.subtitle}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="text-xs text-muted-foreground flex-1">
+                  <p className="line-clamp-3">{ann.content}</p>
+                </CardContent>
+                <div className="p-4 pt-0 border-t border-border flex items-center justify-between mt-auto">
+                  <span className="text-[10px] text-muted-foreground">Audience: {ann.target_audience}</span>
+                  <div className="flex items-center space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteAnnouncement(ann.id)}
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
 
-      {/* CREATE NEW PAGE MODAL */}
-      <Dialog open={newPageModalOpen} onOpenChange={setNewPageModalOpen}>
+      {/* New Announcement Modal */}
+      <Dialog open={announcementModalOpen} onOpenChange={setAnnouncementModalOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-heading text-base font-bold">Create Informational Page</DialogTitle>
+            <DialogTitle className="text-base font-heading font-bold">Create System Broadcast</DialogTitle>
             <DialogDescription className="text-xs">
-              Add a new dynamic policy, legal terms, or guidelines page.
+              Broadcasts save directly to <code>cms_content</code> and display on user dashboards.
             </DialogDescription>
           </DialogHeader>
-
-          <form onSubmit={handleCreateNewPage} className="space-y-3 py-2 text-xs">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">Page Title</Label>
-              <Input
-                required
-                placeholder="e.g. Campus Printing Guidelines"
-                value={newPageTitle}
-                onChange={(e) => {
-                  setNewPageTitle(e.target.value);
-                  if (!newPageSlug) {
-                    setNewPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'));
-                  }
-                }}
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold">URL Slug (Unique)</Label>
-              <div className="flex items-center">
-                <span className="h-8 px-2.5 bg-muted border border-r-0 border-border rounded-l-md flex items-center text-muted-foreground font-mono text-[11px]">
-                  /pages/
-                </span>
-                <Input
-                  required
-                  placeholder="campus_guidelines"
-                  value={newPageSlug}
-                  onChange={(e) => setNewPageSlug(e.target.value)}
-                  className="h-8 text-xs font-mono rounded-l-none"
-                />
-              </div>
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setNewPageModalOpen(false)}
-                className="text-xs h-8"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={savingPage} className="text-xs h-8">
-                {savingPage ? 'Creating...' : 'Create Page'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* CLIENT SIMULATION PREVIEW MODAL */}
-      <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-3xl max-h-[90dvh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-heading text-base font-bold flex items-center gap-2">
-              <Eye className="w-4 h-4 text-primary" />
-              Document Preview: {selectedPage.title}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Live simulation of how this page renders across User and Shopkeeper panels.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="p-6 bg-card border border-border rounded-xl shadow-inner space-y-4">
-            <div className="border-b border-border pb-4">
-              <Badge className="bg-emerald-600 mb-2">
-                <ShieldCheck className="w-3 h-3 mr-1" /> Verified PrintOn24 Policy
-              </Badge>
-              <h2 className="text-2xl font-bold font-heading">{selectedPage.title}</h2>
-              {selectedPage.meta_description && (
-                <p className="text-xs text-muted-foreground mt-1">{selectedPage.meta_description}</p>
-              )}
-            </div>
-
-            <div
-              className="prose prose-sm dark:prose-invert max-w-none"
-              dangerouslySetInnerHTML={{ __html: selectedPage.content_html || '<p>No content entered yet</p>' }}
-            />
-          </div>
-
-          <DialogFooter className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPreviewModalOpen(false)}
-              className="text-xs h-8"
-            >
-              Close Preview
-            </Button>
-            <a
-              href={`/pages/${selectedPage.slug}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Button size="sm" className="text-xs h-8 gap-1.5">
-                Open in Full View <ExternalLink className="w-3.5 h-3.5" />
-              </Button>
-            </a>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* CREATE CONTENT MODAL (MARKETING) */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-heading text-base font-bold">Create Marketing Notice</DialogTitle>
-            <DialogDescription className="text-xs">
-              Broadcast announcements and banners to target users.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSaveContent} className="space-y-3 py-2 text-xs">
+          <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Title</Label>
               <Input
-                required
-                value={editingContent.title || ''}
-                onChange={(e) => setEditingContent({ ...editingContent, title: e.target.value })}
-                className="h-8 text-xs"
+                value={editingAnnouncement.title || ''}
+                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })}
+                placeholder="e.g. Scheduled Maintenance Window"
+                className="h-9 text-xs"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-semibold">Category</Label>
-              <Select
-                value={editingContent.category || 'banner'}
-                onValueChange={(val: any) => setEditingContent({ ...editingContent, category: val })}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="banner">Promotional Banner</SelectItem>
-                  <SelectItem value="announcement">Announcement</SelectItem>
-                  <SelectItem value="notice">Notice & Alert</SelectItem>
-                  <SelectItem value="faq">Platform FAQ</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-xs font-semibold">Subtitle / Summary</Label>
+              <Input
+                value={editingAnnouncement.subtitle || ''}
+                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, subtitle: e.target.value })}
+                placeholder="Brief summary line"
+                className="h-9 text-xs"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-semibold">Content</Label>
               <Textarea
-                required
-                value={editingContent.content || ''}
-                onChange={(e) => setEditingContent({ ...editingContent, content: e.target.value })}
-                className="text-xs min-h-[80px]"
+                value={editingAnnouncement.content || ''}
+                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                rows={4}
+                placeholder="Detailed message..."
+                className="text-xs"
               />
             </div>
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setModalOpen(false)} className="text-xs h-8">
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={submittingContent} className="text-xs h-8">
-                {submittingContent ? 'Saving...' : 'Save Notice'}
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAnnouncementModalOpen(false)} className="h-9 text-xs">
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSaveAnnouncement}
+              disabled={savingAnnouncement}
+              className="h-9 text-xs gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" /> Publish Broadcast
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

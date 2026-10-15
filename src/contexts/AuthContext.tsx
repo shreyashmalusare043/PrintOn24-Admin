@@ -13,6 +13,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+async function sha256Hex(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function saltedSha256Hex(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`printon24_salt_${text.trim()}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [admin, setAdmin] = useState<SuperAdminProfile | null>(() => {
     const saved = localStorage.getItem('printon24_admin_session');
@@ -68,8 +84,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Invalid Super Admin credentials' };
       }
 
-      if (data.password_hash !== cleanPass) {
-        return { success: false, error: 'Incorrect password entered' };
+      // Cryptographic hash validation against stored hash
+      const standardHash = await sha256Hex(cleanPass);
+      const saltedHash = await saltedSha256Hex(cleanPass);
+
+      const isMatch =
+        data.password_hash === cleanPass ||
+        data.password_hash === standardHash ||
+        data.password_hash === saltedHash;
+
+      if (!isMatch) {
+        return { success: false, error: 'Incorrect password entered. Please check your credentials.' };
+      }
+
+      // If stored password was plain text, upgrade it to salted SHA-256 in DB
+      if (data.password_hash === cleanPass) {
+        await supabase
+          .from('super_admin_profiles')
+          .update({ password_hash: saltedHash })
+          .eq('id', data.id);
       }
 
       const profile: SuperAdminProfile = {

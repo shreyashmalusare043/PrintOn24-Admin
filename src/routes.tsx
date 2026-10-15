@@ -15,6 +15,7 @@ import { JobsPage } from './pages/JobsPage';
 import { SupportPage } from './pages/SupportPage';
 import { CMSPage } from './pages/CMSPage';
 import { AdvertisementsPage } from './pages/AdvertisementsPage';
+import { PromotionsPage } from './pages/PromotionsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { PublicInformationalPage } from './pages/PublicInformationalPage';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
@@ -160,6 +161,15 @@ export const routes: RouteConfig[] = [
     element: (
       <ProtectedRoute>
         <CMSPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    name: 'Promotional Alerts & Notices',
+    path: '/promotions',
+    element: (
+      <ProtectedRoute>
+        <PromotionsPage />
       </ProtectedRoute>
     ),
   },

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { fetchAllApplicationRequests, updateRequestStatus, type UnifiedRequest } from '@/services/api';
-import { Inbox, CheckCircle2, Clock, AlertCircle, RefreshCw, Send, MessageSquare, Briefcase, Star } from 'lucide-react';
+import { fetchAllApplicationRequests, updateRequestStatus, deleteRequest, type UnifiedRequest } from '@/services/api';
+import { Inbox, CheckCircle2, Clock, AlertCircle, RefreshCw, Send, MessageSquare, Briefcase, Star, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +72,18 @@ export const RequestsPage: React.FC = () => {
       setSavingStatus(false);
     }
   };
+
+  const handleDeleteRequest = async (req: UnifiedRequest) => {
+    try {
+      await deleteRequest(req.id, req.source);
+      setRequests((prev) => prev.filter((r) => r.id !== req.id));
+      toast.success('Request permanently removed from database');
+      if (selectedReq?.id === req.id) setSelectedReq(null);
+    } catch (err) {
+      toast.error('Failed to delete request from database');
+    }
+  };
+
 
   const handleSendResponse = () => {
     if (!replyText.trim()) return;
@@ -230,17 +242,28 @@ export const RequestsPage: React.FC = () => {
                         </Badge>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedReq(req);
-                            setReplyText('');
-                          }}
-                          className="h-7 text-xs px-2.5"
-                        >
-                          View & Reply
-                        </Button>
+                        <div className="flex items-center justify-end space-x-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedReq(req);
+                              setReplyText('');
+                            }}
+                            className="h-7 text-xs px-2.5"
+                          >
+                            View & Reply
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteRequest(req)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Delete Request"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

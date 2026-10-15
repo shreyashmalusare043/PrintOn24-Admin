@@ -271,19 +271,37 @@ export interface UploadPageAd {
   updated_at?: string;
 }
 
+export interface PlatformPolicy {
+  id: string;
+  title: string;
+  content: string;
+  version: string;
+  published_at?: string | null;
+  is_active: boolean;
+}
+
+export interface PlatformTerms {
+  id: string;
+  title: string;
+  content: string;
+  version: string;
+  published_at?: string | null;
+  is_active: boolean;
+}
+
 export interface CMSContent {
   id: string;
-  category: 'banner' | 'announcement' | 'notice' | 'faq' | 'app_config';
+  category: 'about_us' | 'banner' | 'announcement' | 'notice' | 'faq' | 'app_config' | 'terms_and_conditions' | 'privacy_policy' | string;
   title: string;
   subtitle?: string | null;
   content?: string | null;
   image_url?: string | null;
   link_url?: string | null;
-  target_audience: 'all' | 'user' | 'shopkeeper';
+  target_audience: 'all' | 'user' | 'shopkeeper' | string;
   badge_text?: string | null;
   is_active: boolean;
   display_order: number;
-  created_at: string;
+  created_at?: string;
   updated_at?: string;
 }
 
@@ -319,6 +337,24 @@ export interface AdminOTP {
 }
 
 export type AdPlacement = 'home_hero' | 'upload_page';
+
+
+export interface PlatformSettings {
+  id: string;
+  commission_rate: number;
+  razorpay_enabled: boolean;
+  pay_on_counter_enabled: boolean;
+  payu_enabled: boolean;
+  payout_cycle_days: number;
+  min_payout_amount: number;
+  maintenance_mode?: boolean;
+  new_shop_registrations_open?: boolean;
+  auto_settlement_enabled?: boolean;
+  vip_discount_system_active?: boolean;
+  ad_sponsorship_slots_open?: boolean;
+  live_file_upload_enabled?: boolean;
+  updated_at?: string;
+}
 
 export interface Advertisement {
   id: string;

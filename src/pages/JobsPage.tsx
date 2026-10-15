@@ -3,10 +3,11 @@ import {
   fetchCareers,
   saveCareer,
   toggleCareerActive,
+  deleteCareer,
   fetchCareerApplications
 } from '@/services/api';
 import type { Career, CareerApplication } from '@/types/types';
-import { Briefcase, Plus, Users, Check, RefreshCw, FileText, MapPin, Clock } from 'lucide-react';
+import { Briefcase, Plus, Users, Check, RefreshCw, FileText, MapPin, Clock, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -108,12 +109,23 @@ export const JobsPage: React.FC = () => {
   const handleToggleJob = async (job: Career) => {
     try {
       await toggleCareerActive(job.id, job.is_active);
+      const nextActive = !job.is_active;
       setCareers((prev) =>
-        prev.map((c) => (c.id === job.id ? { ...c, is_active: !c.is_active } : c))
+        prev.map((c) => (c.id === job.id ? { ...c, is_active: nextActive } : c))
       );
-      toast.success(`Job listing ${job.title} status updated`);
+      toast.success(`Job listing "${job.title}" is now ${nextActive ? 'Published (visible to users)' : 'Unpublished (hidden from users)'}`);
     } catch (err) {
-      toast.error('Failed to update job status');
+      toast.error('Failed to update job status in database');
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string) => {
+    try {
+      await deleteCareer(jobId);
+      setCareers((prev) => prev.filter((c) => c.id !== jobId));
+      toast.success('Job listing permanently removed from database');
+    } catch (err) {
+      toast.error('Failed to delete job listing');
     }
   };
 
@@ -175,7 +187,7 @@ export const JobsPage: React.FC = () => {
                 </CardContent>
                 <div className="p-4 pt-0 border-t border-border/50 flex items-center justify-between mt-auto">
                   <span className="text-[10px] text-muted-foreground font-mono">{job.type} • {job.experience}</span>
-                  <div className="space-x-1">
+                  <div className="flex items-center space-x-1">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -194,6 +206,15 @@ export const JobsPage: React.FC = () => {
                       className="h-7 text-xs px-2"
                     >
                       Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteJob(job.id)}
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      title="Delete Job"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
                 </div>

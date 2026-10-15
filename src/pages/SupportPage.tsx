@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { fetchSupportTickets, respondToSupportTicket, fetchShops } from '@/services/api';
+import { fetchSupportTickets, respondToSupportTicket, deleteSupportTicket, fetchShops } from '@/services/api';
 import type { SupportTicket, PrintShop, TicketStatus } from '@/types/types';
-import { LifeBuoy, CheckCircle2, Clock, MessageSquare, Send, RefreshCw, AlertCircle, Store } from 'lucide-react';
+import { LifeBuoy, CheckCircle2, Clock, MessageSquare, Send, RefreshCw, AlertCircle, Store, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +76,17 @@ export const SupportPage: React.FC = () => {
       toast.error('Failed to save resolution');
     } finally {
       setSavingResponse(false);
+    }
+  };
+
+  const handleDeleteTicket = async (ticketId: string) => {
+    try {
+      await deleteSupportTicket(ticketId);
+      setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+      toast.success('Support ticket permanently removed from database');
+      if (selectedTicket?.id === ticketId) setSelectedTicket(null);
+    } catch (err) {
+      toast.error('Failed to delete support ticket from database');
     }
   };
 
@@ -190,14 +201,25 @@ export const SupportPage: React.FC = () => {
                         {new Date(t.created_at).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenTicket(t)}
-                          className="h-7 text-xs px-2.5"
-                        >
-                          View & Resolve
-                        </Button>
+                        <div className="flex items-center justify-end space-x-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenTicket(t)}
+                            className="h-7 text-xs px-2.5"
+                          >
+                            View & Resolve
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteTicket(t.id)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Delete Ticket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

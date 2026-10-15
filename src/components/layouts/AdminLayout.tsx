@@ -25,6 +25,7 @@ import {
   Palette,
   Megaphone,
   BookOpen,
+  BellRing,
   Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
   { name: 'Users & Memberships', path: '/users', icon: Users },
   { name: 'Advertisements', path: '/advertisements', icon: Megaphone },
   { name: 'Dynamic Pages & CMS', path: '/cms', icon: BookOpen },
+  { name: 'Promotional Alerts', path: '/promotions', icon: BellRing },
   { name: 'Application Requests', path: '/requests', icon: Inbox },
   { name: 'Jobs & Careers', path: '/jobs', icon: Briefcase },
   { name: 'Help & Support', path: '/support', icon: LifeBuoy },
@@ -112,18 +114,16 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       {/* Desktop Fixed Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 h-screen fixed inset-y-0 left-0 z-40 border-r border-border bg-sidebar select-none">
-        {/* Brand Header - Enlarged & Neatly Centered Logo per Section 18 */}
-        <div className="h-20 shrink-0 flex flex-col justify-center px-4 border-b border-sidebar-border relative">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex-1 flex justify-center py-1">
-              <img
-                src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
-                alt="PrintOn24"
-                className="h-10 w-auto max-w-[170px] object-contain transition-transform hover:scale-105"
-              />
-            </div>
-            <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0 absolute top-2 right-2.5">v2.4</Badge>
+        {/* Brand Header - Enlarged & Left-Aligned Logo per Section 4 */}
+        <div className="h-20 shrink-0 flex items-center px-4 border-b border-sidebar-border justify-between">
+          <div className="flex items-center">
+            <img
+              src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
+              alt="PrintOn24"
+              className="h-10 w-auto max-w-[170px] object-contain transition-transform hover:scale-105"
+            />
           </div>
+          <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0">v2.4</Badge>
         </div>
 
         {/* Scrollable Nav items - Scrolls Independently */}

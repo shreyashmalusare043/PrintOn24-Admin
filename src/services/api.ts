@@ -31,7 +31,10 @@ import type {
   Advertisement,
   InformationalPage,
   HomeBanner,
-  UploadPageAd
+  UploadPageAd,
+  PlatformSettings,
+  PlatformPolicy,
+  PlatformTerms
 } from '@/types/types';
 
 // ========================================================
@@ -365,6 +368,44 @@ export async function toggleShopStatus(shopId: string, currentStatus: ShopStatus
     .eq('id', shopId);
 
   if (error) throw error;
+
+  // Dispatch persistent notification to shopkeeper
+  try {
+    const { data: sk } = await supabase
+      .from('shopkeeper_accounts')
+      .select('id, owner_name, email')
+      .eq('shop_id', shopId)
+      .maybeSingle();
+
+    const targetUserId = sk?.id || shopId;
+    const now = new Date().toISOString();
+    const notifId = `notif_${Date.now()}`;
+
+    if (newStatus === 'inactive') {
+      await supabase.from('notifications').insert({
+        id: notifId,
+        user_id: targetUserId,
+        title: 'Printing Terminal Deactivated by Super Admin',
+        message: 'Your print shop terminal has been deactivated by Super Admin. The terminal cannot accept new print orders from mobile users until reactivated.',
+        type: 'alert',
+        is_read: false,
+        created_at: now
+      });
+    } else {
+      await supabase.from('notifications').insert({
+        id: notifId,
+        user_id: targetUserId,
+        title: 'Printing Terminal Reactivated by Super Admin',
+        message: 'Your print shop terminal has been reactivated by Super Admin and is now live and accepting print orders.',
+        type: 'success',
+        is_read: false,
+        created_at: now
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to dispatch notification to shopkeeper:', err);
+  }
+
   return newStatus;
 }
 
@@ -881,9 +922,34 @@ export async function updateRequestStatus(
   newStatus: string
 ): Promise<void> {
   if (source === 'advertiser') {
-    await supabase.from('ad_requests').update({ status: newStatus }).eq('id', id);
+    const { error } = await supabase.from('ad_requests').update({ status: newStatus }).eq('id', id);
+    if (error) throw error;
   } else {
-    await supabase.from('contact_messages').update({ status: newStatus }).eq('id', id);
+    // Check if it belongs to app_feedback
+    const { data: fb } = await supabase.from('app_feedback').select('id').eq('id', id).maybeSingle();
+    if (fb) {
+      const { error } = await supabase.from('app_feedback').update({ moderation_status: newStatus }).eq('id', id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('contact_messages').update({ status: newStatus }).eq('id', id);
+      if (error) throw error;
+    }
+  }
+}
+
+export async function deleteRequest(id: string, source: string): Promise<void> {
+  if (source === 'advertiser') {
+    const { error } = await supabase.from('ad_requests').delete().eq('id', id);
+    if (error) throw error;
+  } else {
+    const { data: fb } = await supabase.from('app_feedback').select('id').eq('id', id).maybeSingle();
+    if (fb) {
+      const { error } = await supabase.from('app_feedback').delete().eq('id', id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('contact_messages').delete().eq('id', id);
+      if (error) throw error;
+    }
   }
 }
 
@@ -914,6 +980,14 @@ export async function respondToSupportTicket(
     })
     .eq('id', ticketId);
 
+  if (error) throw error;
+}
+
+export async function deleteSupportTicket(ticketId: string): Promise<void> {
+  const { error } = await supabase
+    .from('support_tickets')
+    .delete()
+    .eq('id', ticketId);
   if (error) throw error;
 }
 
@@ -963,6 +1037,15 @@ export async function toggleCareerActive(careerId: string, current: boolean): Pr
 
   if (error) throw error;
 }
+
+export async function deleteCareer(careerId: string): Promise<void> {
+  const { error } = await supabase
+    .from('careers')
+    .delete()
+    .eq('id', careerId);
+  if (error) throw error;
+}
+
 
 export async function fetchCareerApplications(careerId?: string): Promise<CareerApplication[]> {
   let query = supabase.from('career_applications').select('*').order('created_at', { ascending: false }).limit(100);
@@ -1211,6 +1294,56 @@ export async function updateSecurityPasswordWithOtp(
   return { success: true };
 }
 
+
+export async function fetchPlatformSettings(): Promise<PlatformSettings> {
+  const { data, error } = await supabase
+    .from('platform_settings')
+    .select('*')
+    .eq('id', 'default')
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) {
+    return {
+      id: 'default',
+      commission_rate: 5.0,
+      razorpay_enabled: true,
+      pay_on_counter_enabled: true,
+      payu_enabled: true,
+      payout_cycle_days: 2,
+      min_payout_amount: 500,
+      maintenance_mode: false,
+      new_shop_registrations_open: true,
+      auto_settlement_enabled: true,
+      vip_discount_system_active: true,
+      ad_sponsorship_slots_open: true,
+      live_file_upload_enabled: true
+    };
+  }
+  return {
+    ...data,
+    commission_rate: Number(data.commission_rate) || 5.0,
+    min_payout_amount: Number(data.min_payout_amount) || 500,
+    maintenance_mode: Boolean(data.maintenance_mode),
+    new_shop_registrations_open: data.new_shop_registrations_open !== false,
+    auto_settlement_enabled: data.auto_settlement_enabled !== false,
+    vip_discount_system_active: data.vip_discount_system_active !== false,
+    ad_sponsorship_slots_open: data.ad_sponsorship_slots_open !== false,
+    live_file_upload_enabled: data.live_file_upload_enabled !== false
+  };
+}
+
+export async function updatePlatformSettingField(
+  field: keyof PlatformSettings,
+  value: any
+): Promise<void> {
+  const { error } = await supabase
+    .from('platform_settings')
+    .update({ [field]: value, updated_at: new Date().toISOString() })
+    .eq('id', 'default');
+  if (error) throw error;
+}
+
 // ========================================================
 // 13. Advertisements Management (Home Banners & Upload Page Ads ONLY)
 // ========================================================
@@ -1289,6 +1422,85 @@ export async function deleteUploadPageAd(id: string): Promise<void> {
   const { error } = await supabase.from('upload_page_ads').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ========================================================
+// 13. Platform Policies & Terms Direct CRUD (platform_policies & platform_terms)
+// ========================================================
+export async function fetchPlatformPolicies(): Promise<PlatformPolicy[]> {
+  const { data, error } = await supabase
+    .from('platform_policies')
+    .select('*')
+    .order('published_at', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? (data as PlatformPolicy[]) : [];
+}
+
+export async function savePlatformPolicy(policy: Partial<PlatformPolicy> & { title: string; content: string }): Promise<void> {
+  const id = policy.id || 'pol_01';
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('platform_policies')
+    .upsert({
+      id,
+      title: policy.title,
+      content: policy.content,
+      version: policy.version || 'v2.6',
+      published_at: policy.published_at || now,
+      is_active: policy.is_active !== undefined ? policy.is_active : true
+    });
+  if (error) throw error;
+}
+
+export async function fetchPlatformTerms(): Promise<PlatformTerms[]> {
+  const { data, error } = await supabase
+    .from('platform_terms')
+    .select('*')
+    .order('published_at', { ascending: false });
+  if (error) throw error;
+  return Array.isArray(data) ? (data as PlatformTerms[]) : [];
+}
+
+export async function savePlatformTerms(terms: Partial<PlatformTerms> & { title: string; content: string }): Promise<void> {
+  const id = terms.id || 'trm_01';
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('platform_terms')
+    .upsert({
+      id,
+      title: terms.title,
+      content: terms.content,
+      version: terms.version || 'v2.6',
+      published_at: terms.published_at || now,
+      is_active: terms.is_active !== undefined ? terms.is_active : true
+    });
+  if (error) throw error;
+}
+
+export async function fetchAboutUsSections(): Promise<CMSContent[]> {
+  const { data, error } = await supabase
+    .from('cms_content')
+    .select('*')
+    .or('category.eq.about_us,id.like.about_%')
+    .order('display_order', { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? (data as CMSContent[]) : [];
+}
+
+export async function saveAboutUsSection(item: Partial<CMSContent> & { id: string; title: string; content?: string }): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('cms_content')
+    .update({
+      title: item.title,
+      content: item.content ?? '',
+      subtitle: item.subtitle,
+      is_active: item.is_active !== undefined ? item.is_active : true,
+      updated_at: now
+    })
+    .eq('id', item.id);
+  if (error) throw error;
+}
+
 
 export async function toggleUploadPageAdActive(id: string, current: boolean): Promise<void> {
   const { error } = await supabase
