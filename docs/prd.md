@@ -1,166 +1,195 @@
 # Requirements Document
 
 ## 1. Application Overview
-- **Application Name**: PrintOn24
-- **Application Description**: PrintOn24 Super Admin and Shopkeeper Panel is a centralized web management platform that enables platform administrators and shopkeepers to manage printing shop configurations, access controls, database-driven analytics, settlement cycles, payment modes, security passwords, advertisement placements, rich-text dynamic CMS, and subscription lifecycles with strict data isolation.
+- **Application Name**: PrintOn24 Super Admin Panel
+- **Application Description**: A centralized web administration system for PrintOn24 super administrators to oversee platform operations, financial settlements, shopkeeper registrations, capacity limits, advertisements, CMS policies, and support requests with real-time database persistence and cross-panel consistency.
 
 ## 2. Target Users & Core Scenarios
 - **Target Users**:
-  - Super Administrators: Platform owners responsible for managing platform-wide operational data, shop configurations, payments, settlements, subscriptions, security settings, ads, and dynamic content.
-  - Shopkeepers: Store owners managing their assigned shop operations, PC limits, orders, and subscriptions within authorized limits.
+  - Super Administrators: Platform administrators responsible for managing global platform operations, shop statuses, financial settlements, advertisements, CMS content, and security settings.
 - **Core Scenarios**:
-  - Super Admin accesses fixed-layout panels and navigates modules with independent sidebar scrolling.
-  - Super Admin applies multi-dimensional database filters (date ranges, multi-shop selectors, status, payment modes) across transactions, settlements, requests, and shopkeepers.
-  - Super Admin configures three separate 6-digit security passwords (with email OTP verification) to protect sensitive actions: Shopkeeper Credential View, Settlement & Payout, and Payment Methods.
-  - Super Admin views shopkeeper details with centered QR code alignment and reveals credentials only upon valid 6-digit password verification.
-  - Super Admin manages advertisement banners for User Panel Home and Upload pages, and edits dynamic CMS pages via a rich-text editor.
-  - Disabled or expired subscription shopkeeper accounts are automatically restricted from logging in while preserving historical data.
+  - Super Admin signs in securely and navigates platform modules through an adaptive vertical sidebar layout.
+  - Super Admin monitors real-time platform metrics, orders, revenue breakdown, and executes platform controllers.
+  - Super Admin registers new shops, toggles shop activation status with backend enforcement, and monitors shop-level ledgers.
+  - Super Admin calculates and processes eligible settlements and payouts following standard settlement cycles.
+  - Super Admin manages Homepage Banners (`home_banners`) and Upload Page Ads (`upload_page_ads`) with database persistence.
+  - Super Admin creates, edits, previews, and publishes CMS documents (`cms_content`, `platform_policies`, `platform_terms`) and career postings.
+  - Super Admin manages promotional alerts, VIP memberships with clear shop associations, support tickets, and system security credentials.
 
 ## 3. Page Structure & Functional Details
 
 ### 3.1 Page Structure Tree
 ```
-PrintOn24 Management Panel
-├── Global Layout (Fixed Top Navbar, Fixed Left Sidebar, Scrollable Content Area)
+PrintOn24 Super Admin Panel
+├── Global Layout & Navigation
+│   ├── Vertical Sidebar (Enlarged & Centered Logo, Collapsible Navigation)
+│   └── Header Bar (Session Controls, Logout Action)
 ├── Authentication
-│   ├── Login Page (Role-based access & account status validation)
-│   └── Email OTP Verification Modal (6-digit input for sensitive settings)
-├── Dashboard & Analytics
-│   └── Overview Dashboard (Filtered by date, shop, status)
-├── Shop & Shopkeeper Management
-│   ├── Shopkeeper Directory (Database-driven filters & status controls)
-│   ├── Shop Registration Form (Profile, Initial Credentials, QR Generation)
-│   └── Shopkeeper Details View
-│       ├── Overview Tab (Centered QR Container, Masked Credentials with Eye-Icon Verification)
-│       └── Payments & Limits Tab (PC Capacity & Payment Mode Configurations)
-├── PC Capacity Management
-│   └── PC Limit & Upgrade Requests (Status, Date & Shop Filters)
-├── Payment & Settlement Management
-│   ├── Payment Methods Configuration (Protected by Security Password)
-│   ├── Online Payment Transactions Log
-│   └── Settlement & Payout Management (Protected by Security Password, Date/Status/Type Filters)
-├── Subscription & Membership Management
-│   ├── Subscription Plans Directory (Database-driven plan parameters)
-│   ├── Shopkeeper Subscription Assignment & Lifecycle Tracking
-│   └── User Memberships Directory
-├── Advertisement Management
-│   ├── User Panel Home Page Hero/Banner Ads
-│   └── User Panel Upload Page Ads
-├── Dynamic Content Management (CMS)
-│   ├── Rich-Text Content Editor (About Us, Privacy Policy, Terms & Conditions)
-│   └── Dynamic Informational Page Preview & Publishing
-├── Application Requests Management
-│   └── Centralized Request Inbox (Multi-shop, status & date filters)
-└── System Settings & Security Configuration
-    ├── Security Passwords Card (Credential View, Settlement & Payout, Payment Methods)
-    └── Appearance & Theme Configuration
+│   └── Super Admin Sign-In Page (Isolated Admin Login, Polished Print-Themed Graphics)
+├── Dashboard (Page 1)
+│   ├── Live Dynamic Metric Cards
+│   ├── Revenue & Payment Method Line Chart
+│   └── Platform Controllers Section
+├── Operational Ledger (Page 2)
+│   └── Live Transaction & Print Volume Ledger (Search, Filters, Pagination)
+├── Shops & Shopkeepers (Page 3)
+│   ├── Registered Printing Shops Directory (Status Toggle, Detail View, Delete)
+│   └── Shopkeeper Registration Form
+├── Payment Methods (Page 4)
+│   └── Shop-Specific Payment Configuration Table
+├── Settlements & Payouts (Page 5)
+│   ├── Financial Summary Cards (Gross Online, Fees, Net Payable)
+│   ├── Payouts Ledger Table (Multi-Filter by Status, Date, Shop, Method)
+│   └── Settlement Actions (Approve, Process, Mark Paid, Export)
+├── PC Capacity Limit (Page 6)
+│   └── Shop PC Limit Tracker & Quota Editor
+├── Subscription Plans (Page 7)
+│   └── Platform Plans Registry (CRUD Actions, Pricing, PC Limits, Status)
+├── Users & Memberships (Page 8)
+│   ├── Registered User Directory (Search, Pagination)
+│   └── Shop-Wise VIP Members (Associated Shop Name Display, Status Filter)
+├── Advertisements (Page 9)
+│   ├── Home Page Banners (Direct CRUD on home_banners table)
+│   └── Upload Page Ads (Direct CRUD on upload_page_ads table)
+├── Dynamic Pages & CMS (Page 10)
+│   ├── About PrintOn24 Editor (cms_content table)
+│   ├── Privacy Policies Editor (platform_policies table)
+│   └── Terms and Conditions Editor (platform_terms table)
+├── Promotional Alerts & Notices (Page 11)
+│   └── Alerts Management (CRUD, Audience Targeting, Publish/Unpublish)
+├── Application Requests (Page 12)
+│   └── Request Inbox (Categories: All, Feedback, User Inquiry, Shopkeeper Request, Advertiser Sponsorship)
+├── Jobs & Careers (Page 13)
+│   ├── Job Postings Directory (CRUD, Publish/Unpublish Controls)
+│   └── Candidate Applications View (Applicant Profile & Formatted Cover Note)
+├── Help & Support (Page 14)
+│   └── Support Tickets Ledger (Status Tracking, Responses)
+└── System Settings & Security (Page 15)
+    ├── Security Passwords & Access Protection
+    └── Global Platform Configurations
 ```
 
 ### 3.2 Functional Description
 
-#### 3.2.1 Global Layout & Navigation
-- Fixed top navigation bar and fixed left sidebar across both Super Admin and Shopkeeper Admin panels.
-- The sidebar menu scrolls independently when menu items exceed screen height; only the main page body content scrolls.
+#### 3.2.1 Global UI & Authentication
+- **Sidebar Logo Presentation**:
+  - Logo asset displayed in the vertical sidebar header with increased sizing, balanced vertical and horizontal spacing, and neat centering.
+  - Preserves responsive behavior without overlapping navigation items.
+- **Sign-In Page**:
+  - Isolated admin login interface with clean printing and admin operational visual assets.
+  - Supports standard credential authentication, session persistence, and secure logout redirection.
+- **Responsive Layout**:
+  - Layout dynamically adapts across mobile, tablet, laptop, and desktop viewports with collapsible navigation and horizontally scrollable data tables.
 
-#### 3.2.2 Authentication & Access Control
-- **Login Validation**:
-  - Validates credentials and verifies active account and subscription status before granting access.
-  - Disabled shopkeeper accounts are blocked at login with an explicit status message.
-  - Inactive or expired subscriptions restrict shopkeeper access according to plan rules without deleting historical data.
-- **Email OTP Verification**:
-  - Required for viewing, setting, or updating any of the three security passwords in System Settings.
-  - Sends a secure, time-expiring OTP to the registered Super Admin email address.
-  - Displays six individual input boxes with attempt limits and backend validation.
+#### 3.2.2 Dashboard (Page 1)
+- **Live Metric Cards**: Aggregates real-time figures from database records covering active users, registered shops, orders, revenue, and active memberships.
+- **Revenue Breakdown Chart**: Renders a dotted-point line graph aggregating dynamic payment and order data with date range filtering (Today, Yesterday, Last 7 Days, Last 30 Days, Custom).
+- **Platform Controllers**: Dedicated actionable control triggers for core platform administration tasks connected directly to backend functions.
 
-#### 3.2.3 Shopkeeper QR & Details
-- **Shopkeeper Details Tabs**:
-  - Limited strictly to two tabs: `Overview` and `Payments & Limits` (QR Standards tab removed).
-- **Centered QR Display**:
-  - QR code is centered inside a dedicated, properly sized container to guarantee sharp, scannable display.
-- **Credential Masking & Security**:
-  - Login credentials are hidden by default.
-  - Clicking the eye icon opens a modal requesting the common 6-digit Shopkeeper Credential View password.
-  - Upon verification, reveals credential details without exposing or retrieving plaintext passwords.
+#### 3.2.3 Operational Ledger (Page 2)
+- Displays database-backed transaction records, shop print volumes, and aggregated operational totals.
+- Provides keyword search, date filtering, status filtering, and table pagination.
 
-#### 3.2.4 System Settings & Security Passwords
-- **Three Dedicated Security Password Cards**:
-  1. Shopkeeper Credential View Password
-  2. Settlement & Payout Password
-  3. Payment Methods Password
-- Each password is composed of exactly 6 numeric digits, securely hashed, masked upon saving, and verified server-side.
-- Modifying or viewing configured passwords strictly requires prior Super Admin email OTP verification.
+#### 3.2.4 Shops & Shopkeepers (Page 3)
+- **Shop Directory**: Displays registered print shops and shopkeeper details. Supports status toggles (activate/deactivate), shop detail inspection, and account removal.
+- **Status Enforcement**: Deactivating a shop updates the database status and enforces access restrictions in real-time.
+- **Shopkeeper Registration**: Persists new shopkeeper credentials directly to the database, enabling immediate login access.
 
-#### 3.2.5 Protected Pages & Actions
-- Applies to: `Settlement & Payout`, `Payment Methods`, and `Shopkeeper Credential View`.
-- When a security password is set, accessing the protected page/section displays a blurred background with a centered 6-digit password verification modal.
-- Full access is unlocked only upon successful password verification; if no password is configured in settings, direct access is allowed.
-- Unrelated page navigation and actions remain functional.
+#### 3.2.5 Payment Methods (Page 4)
+- Manages shop-specific payment options (Razorpay/Online, Cash at Counter, UPI, Wallets).
+- Supports adding, editing, enabling/disabling, and deleting payment methods per shop.
 
-#### 3.2.6 Database-driven Filters
-- Integrated across: Shopkeepers, Payment Methods, Settlements & Payouts, PC Capacity Limits, Subscription Plans, and Application Requests.
-- **Filter Dimensions**:
-  - Date Presets: Today, Yesterday, Last 7 Days, Last 30 Days, and Custom Date Range picker.
-  - Entity Filters: Single or multi-shop/shopkeeper selection.
-  - Status Filters: Active, Inactive, Pending, Approved, Rejected, Settled, Expired.
-  - Payment Type Filters: Counter Only, Online/Razorpay Only, Both.
+#### 3.2.6 Settlements & Payouts (Page 5)
+- **Calculations & Summaries**: Live summary metrics displaying Gross Online Amount, Platform Fees, and Net Payable Amount calculated strictly from eligible, paid online orders.
+- **Multi-Filter Ledger**: Filtering across Payout Status (Pending, Processing, Settled, Rejected), Date Ranges, Shop Identifier, Amount Ranges, and Payment Methods.
+- **Payout Operations**: Idempotent backend actions for approving requests, processing settlements adhering to the 2-day cycle, and marking records as paid with export functionality.
 
-#### 3.2.7 Advertisement Management
-- Super Admin management for two designated placements:
-  1. User Panel Home Page (Hero/Banner Ads)
-  2. User Panel Upload Page Ads
-- **Ad Fields**: Image upload, Title, Description, Target Link/URL, Activation Status (Active/Inactive), and Numeric Display Order.
-- Only active advertisements mapped to the respective placement are dynamically queried and displayed in user panels.
+#### 3.2.7 PC Capacity Limit (Page 6)
+- Manages hardware allocation quotas per shop.
+- Persists limit adjustments to database tables and enforces quotas through backend validation.
 
-#### 3.2.8 Dynamic Content Management (CMS)
-- Super Admin management for informational pages: About Us, Privacy Policy, Terms & Conditions, and FAQs.
-- **Rich-Text Editor Capabilities**: Font selection, Headings, Font Sizes, Paragraph Alignment (Left, Center, Right, Justify), Bulleted/Numbered Lists, Hyperlinks, Preview Mode, and Save/Publish actions.
-- Stores sanitized HTML content in the database and renders dynamic content in User and Shopkeeper panels without altering existing routes.
+#### 3.2.8 Subscription Plans (Page 7)
+- Full CRUD management for platform subscription tiers (Plan Name, Price, PC Limit allowance, Validity duration, Status).
+- Dynamic status filtering and real-time persistence.
 
-#### 3.2.9 Subscription & Membership Management
-- Displays database-persisted subscription plan parameters: Plan Name, Price Amount, Validity Duration, PC Limit, Status, and Start/End Dates.
-- Real-time enforcement of subscription validity against shopkeeper operations.
-- Maintains separation between platform subscription plans and user-level VIP memberships with full transaction history retention.
+#### 3.2.9 Users & Memberships (Page 8)
+- **User Registry**: Displays registered end-users with database-backed search and pagination.
+- **VIP Memberships**: Lists VIP members displaying actual shop names (or clean short names for extended titles) instead of raw internal entity codes, maintaining correct shop associations.
+
+#### 3.2.10 Advertisements (Page 9)
+- **Home Page Banners**: Dedicated CRUD, publish, and unpublish operations interacting exclusively with the `home_banners` table.
+- **Upload Page Ads**: Dedicated CRUD, publish, and unpublish operations interacting exclusively with the `upload_page_ads` table.
+- Real-time updates ensure deleted or unpublished ads immediately cease appearing in public panels.
+
+#### 3.2.11 Dynamic Pages & CMS (Page 10)
+- **Target Documents & Tables**:
+  - `About PrintOn24`: Reads and writes to `cms_content`.
+  - `Privacy Policies`: Reads and writes to `platform_policies`.
+  - `Terms and Conditions`: Reads and writes to `platform_terms`.
+- **Editor & Actions**: Streamlined content editor providing text formatting, Save Draft, Preview mode, and Publish/Unpublish actions.
+- **Data Safety**: Prevents overwriting with blank content, eliminates duplicate records on save, and sanitizes markup before publication.
+
+#### 3.2.12 Promotional Alerts & Notices (Page 11)
+- Create, view, edit, delete, publish, and unpublish platform notices.
+- Targeted audience distribution with status updates reflected across destination panels upon publication.
+
+#### 3.2.13 Application Requests (Page 12)
+- Real-time request inbox with categories: `All Requests`, `Feedback`, `User Inquiry`, `Shopkeeper Request`, and `Advertiser Sponsorship`.
+- Supports request inspection, status updates, and logging.
+
+#### 3.2.14 Jobs & Careers (Page 13)
+- **Job Postings**: CRUD operations with explicit Publish/Unpublish controls. Unpublished openings are excluded from public user listings.
+- **Candidate Applications**: Inspection modal displaying applicant details with the cover note rendered in a dedicated formatted block preserving line breaks.
+
+#### 3.2.15 Help & Support (Page 14) & System Settings (Page 15)
+- **Help & Support**: Support ticket tracking, status updates, and response logs.
+- **System Settings & Security**: Session management, 6-digit administrative security passwords, and global configuration values.
 
 ## 4. Business Rules & Core Logic
 
-### 4.1 Security & Authentication Rules
-- Security passwords must be exactly 6 numeric digits (0-9).
-- Super Admin email OTP must have a defined expiration window and a maximum limit of failed attempts before temporary lockout.
-- Passwords and OTP tokens must be validated strictly on the backend; plaintext passwords must never be stored, transmitted, or returned in API responses.
+### 4.1 Cross-Panel Data Consistency
+- Published updates to CMS pages (`cms_content`, `platform_policies`, `platform_terms`), advertisements, alerts, and job openings must immediately reflect in User and Shopkeeper panels.
+- Unpublished or soft-deleted records must be immediately excluded from public queries across all panels.
 
-### 4.2 Shopkeeper Account & Subscription Lifecycle
-- When a shopkeeper status is set to Inactive/Disabled, login sessions are invalidated immediately, and future login attempts display an account disabled message.
-- When a shop subscription expires or is invalidated, shopkeeper functionality is locked according to subscription rules, but past records, print logs, and payout histories must never be deleted.
-- Access is automatically restored once both account status and subscription validity are active.
+### 4.2 Settlement Integrity & Idempotency
+- Settlement calculations include only successfully paid online orders.
+- Payout actions transition strictly through: Pending -> Processing -> Settled / Rejected.
+- Duplicate execution or duplicate payouts on already settled transactions are strictly blocked.
 
-### 4.3 Data Isolation & Filtering
-- Shopkeeper panels are strictly isolated to their own shop ID data.
-- Super Admin filters execute database queries matching selected criteria (date ranges, multi-shop IDs, status, payment modes) without returning unauthorized or unselected datasets.
+### 4.3 Advertisement Placement Isolation
+- Homepage advertisement actions must strictly modify the `home_banners` table.
+- Upload page advertisement actions must strictly modify the `upload_page_ads` table.
+
+### 4.4 Shop Activation & Access Enforcement
+- Deactivating a shop in the directory immediately invalidates active shop sessions and blocks new logins in the Shopkeeper Portal.
 
 ## 5. Exceptions & Boundary Cases
 
 | Scenario | Condition | System Behavior |
 | :--- | :--- | :--- |
-| Invalid Security Password | User enters incorrect 6-digit password on protected page | Reject access, increment failure count, and display error message |
-| Expired OTP Submission | Super Admin submits OTP after expiration period | Deny verification, notify expiry, and require requesting a new OTP |
-| Maximum OTP Attempts Exceeded | More than allowed failed OTP attempts entered | Lock OTP verification temporarily and invalidate current token |
-| Disabled Shopkeeper Login | Shopkeeper with Inactive status attempts authentication | Block login and display explicit account disabled message |
-| Missing Security Password Configuration | Super Admin accesses protected section when no password is set | Permit direct access without displaying the verification popup |
-| Unsanitized CMS Content | Admin submits rich text containing unsafe tags | Sanitize content on backend before database persistence |
+| Empty Chart Data | No order/payment records exist within the selected filter period | Render baseline line chart at zero values with clear empty state indicator |
+| CMS Draft Saving | Admin saves an incomplete draft without required title | Display validation error message and prevent submission |
+| Shop Deactivation Impact | Admin deactivates an active shop with pending orders | Update shop status without corrupting historic financial or order records |
+| Long Shop Name in VIP | Associated shop name exceeds column width | Display truncated/shortened display format with full shop name visible in detail view |
+| Duplicate Payout Attempt | Processing action triggered on an already settled payout record | Reject action with notice that the record is already settled |
+| Unpublished Job Public Access | Public client requests an unpublished or deleted career posting | Public client query returns empty result or active postings only |
 
 ## 6. Acceptance Criteria
 
-1. The left sidebar and top navbar remain fixed while the sidebar menu scrolls independently and main content scrolls normally across admin views.
-2. The Shopkeeper Details page displays only the Overview and Payments & Limits tabs, with the shop QR centered in a dedicated container.
-3. Credentials in Shopkeeper Details are masked by default and require entering the correct 6-digit password to reveal.
-4. System Settings provides three 6-digit security password cards (Shopkeeper Credential View, Settlement & Payout, Payment Methods) requiring email OTP verification for creation/modification.
-5. Settlement & Payout and Payment Methods pages display a blurred state with a 6-digit password verification modal if a password is configured.
-6. Database filters for Date (Today, Yesterday, Last 7/30 Days, Custom), Shopkeeper/Multi-Shop, Status, and Payment Mode function correctly across all designated modules.
-7. Super Admin can create, edit, reorder, and activate/deactivate ads for User Panel Home and Upload placements.
-8. Super Admin can edit and publish CMS pages using the rich-text editor, and updated content displays dynamically in User and Shopkeeper panels.
-9. Disabled shopkeeper accounts and invalid subscriptions are prevented from logging in while retaining full historical data.
+1. Vertical sidebar renders an enlarged, neatly centered PrintOn24 logo with balanced margins without layout overflow.
+2. Sign-in page provides an isolated login workflow with printing/admin themed visual elements and secure session handling.
+3. The layout and tables dynamically adapt across mobile, tablet, laptop, and desktop viewports.
+4. Dashboard displays real-time aggregated figures from database tables with interactive date filters and functional platform controllers.
+5. Shop status toggling (activate/deactivate) persists to the database and restricts shopkeeper access accordingly.
+6. Settlements and payouts calculate gross, fee, and net amounts accurately from eligible online orders, preventing duplicate settlements.
+7. VIP membership records display the explicit shop name rather than an unmapped entity ID.
+8. Advertisements management performs CRUD operations strictly on `home_banners` for homepage banners and `upload_page_ads` for upload page ads.
+9. CMS content editor allows editing, previewing, and publishing for About Us (`cms_content`), Privacy Policy (`platform_policies`), and Terms and Conditions (`platform_terms`) with immediate User Panel synchronization upon publication.
+10. Job openings unpublished by Super Admin immediately cease to appear in public job listings.
 
 ## 7. Out of Scope (Non-MVP)
-- Automated direct bank disbursement integration (manual payout recording is maintained).
-- Third-party SSO authentication providers for Shopkeeper login.
-- Native mobile push notification dispatch systems.
+
+- Direct modification of User Panel or Shopkeeper Panel frontend codebases.
+- Automatic direct bank wire disbursement integrations.
+- Unrelated redesign of approved page themes and color palettes.
+- Permanent physical deletion of records tied to active transactional history.

@@ -112,16 +112,18 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       {/* Desktop Fixed Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 h-screen fixed inset-y-0 left-0 z-40 border-r border-border bg-sidebar select-none">
-        {/* Brand Header */}
-        <div className="h-16 shrink-0 flex items-center px-4 border-b border-sidebar-border justify-between">
-          <div className="flex items-center space-x-2">
-            <img
-              src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
-              alt="PrintOn24"
-              className="h-8 w-auto max-w-[140px] object-contain"
-            />
+        {/* Brand Header - Enlarged & Neatly Centered Logo per Section 18 */}
+        <div className="h-20 shrink-0 flex flex-col justify-center px-4 border-b border-sidebar-border relative">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex-1 flex justify-center py-1">
+              <img
+                src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
+                alt="PrintOn24"
+                className="h-10 w-auto max-w-[170px] object-contain transition-transform hover:scale-105"
+              />
+            </div>
+            <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0 absolute top-2 right-2.5">v2.4</Badge>
           </div>
-          <Badge variant="secondary" className="text-[10px] font-mono px-1.5">v2.4</Badge>
         </div>
 
         {/* Scrollable Nav items - Scrolls Independently */}
@@ -182,7 +184,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
       {/* Main Column - Fixed Navbar & Only Main Page Content Scrolls */}
       <div className="flex-1 min-w-0 md:pl-64 flex flex-col h-screen overflow-hidden">
         {/* Fixed Top Header */}
-        <header className="h-16 shrink-0 border-b border-border bg-background/95 backdrop-blur px-4 md:px-6 flex items-center justify-between z-30">
+        <header className="h-16 shrink-0 border-b border-border bg-background/95 backdrop-blur px-3 sm:px-4 md:px-6 flex items-center justify-between z-30">
           <div className="flex items-center space-x-3 min-w-0">
             {/* Mobile Sheet Drawer Trigger */}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -192,15 +194,16 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
                   <span className="sr-only">Toggle navigation menu</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-72 flex flex-col bg-sidebar">
-                <SheetHeader className="p-4 border-b border-sidebar-border">
-                  <SheetTitle className="flex items-center space-x-2">
+              <SheetContent side="left" className="p-0 w-72 max-w-[85vw] flex flex-col bg-sidebar">
+                <SheetHeader className="p-4 border-b border-sidebar-border relative">
+                  <SheetTitle className="flex items-center justify-center">
                     <img
                       src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
                       alt="PrintOn24"
-                      className="h-7 w-auto max-w-[130px] object-contain"
+                      className="h-10 w-auto max-w-[160px] object-contain"
                     />
                   </SheetTitle>
+                  <Badge variant="secondary" className="text-[10px] font-mono absolute top-3.5 right-3.5">v2.4</Badge>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto">
                   {renderNavLinks(() => setMobileOpen(false))}
@@ -316,8 +319,8 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         </header>
 
         {/* Main Content Area - ONLY this content area scrolls */}
-        <main className="flex-1 overflow-y-auto min-h-0 p-4 md:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto space-y-6">
+        <main className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="w-full max-w-7xl mx-auto space-y-4 sm:space-y-6">
             {children}
           </div>
         </main>

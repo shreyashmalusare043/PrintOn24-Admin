@@ -160,6 +160,7 @@ export const UsersPage: React.FC = () => {
                     {filteredMemberships.length > 0 ? (
                       filteredMemberships.map((m) => {
                         const shopObj = shops.find((s) => s.id === m.shop_id);
+                        const rawShopName = shopObj ? shopObj.name : m.shop_id;
                         return (
                           <tr key={m.id} className="hover:bg-muted/40 transition-colors">
                             <td className="py-3 px-4 whitespace-nowrap font-semibold text-foreground">
@@ -167,7 +168,12 @@ export const UsersPage: React.FC = () => {
                               <div className="text-[10px] text-muted-foreground">{m.user_phone || 'Phone verified'}</div>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap font-medium text-foreground">
-                              {shopObj ? shopObj.name : m.shop_id}
+                              <span
+                                title={rawShopName}
+                                className="inline-block max-w-[180px] sm:max-w-[240px] truncate align-middle font-medium"
+                              >
+                                {rawShopName}
+                              </span>
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap font-mono text-[11px] text-primary">
                               {m.card_number}
