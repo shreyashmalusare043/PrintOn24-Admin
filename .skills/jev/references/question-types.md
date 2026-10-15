@@ -102,6 +102,11 @@ was wrong and the answer is confidently useless". This page is about avoiding th
 
 ## Confidence and calibration
 
+TypeSafe publishes no universal threshold; the right one depends on the cost of a wrong action. The
+bands below are a starting point. Start conservative, test on your own data, and raise the bar for
+destructive actions. `noul` answers carry no `confidence`: use the probability itself, or
+`abs(2 * p - 1)` for a confidence-style number.
+
 | Signal | Reading | Action |
 | --- | --- | --- |
 | `confidence < 0.35` | the model does not consider the answer supported | treat as **unanswered**, do not branch on it |

@@ -1,109 +1,139 @@
-<GAME>
-* When user requests to generate brick-breaker, breakout, or Arkanoid-style games (paddle + ball + destructible bricks). ALWAYS use Phaser 3 — never a pure React (`useState` + `setInterval`) game loop.
-* **Entrypoint — CRITICAL**: `index.html` always loads `src/main.tsx` (React root) — NEVER modify it. Initialize `Phaser.Game` inside `src/App.tsx` via `useEffect` with `initialized.current` guard. Game scenes and logic go under `src/game/`.
-* **FORBIDDEN packages** (in package.json but must NOT be used for 2D games): `pixi.js` (use Phaser 3), `framer-motion` / `gsap` (use Phaser Tween), standalone `matter-js` (use Phaser's built-in physics).
-* Make full use of assets in manifest.json. Follow `<MANIFEST_FIRST>` rules from base prompt.
-* Portrait or landscape both work; gravity MUST be 0 (the ball is driven by velocity, not gravity).
+<BRICK_BREAKER_REACT>
+# 打砖块/挡板；弹珠台会话 → ball.md。
 
-<CONSTANTS_FILE>
-```typescript
-// src/game/constants.ts — Brick-breaker tuning
-export const BALL_SPEED = 400;      export const BALL_SPEED_MAX = 700;  // ramp as level clears
-export const PADDLE_SPEED = 500;    export const PADDLE_W = 120;
-export const BRICK_ROWS = 6;        export const BRICK_COLS = 10;
-export const BRICK_GAP = 4;         export const POWERUP_CHANCE = 0.15; // drop chance per brick
-export const START_LIVES = 3;
+Use for: brick breaker / Breakout / Arkanoid / paddle catchers. `<canvas>` +
+rAF; React = menu/HUD/results. **Pinball session/sports ball** →
+[ball.md](ball.md). **Gravity slingshot/artillery** → [projectile.md](projectile.md).
+
+<PACKAGE_SELECTION>
+* No synchronized Breakout-specific package. Ball/paddle/brick physics is
+  **app-owned** on Canvas.
+* Optional: `score-core` + `score-react` for HUD ledgers only.
+* Do not use `sports-ball-core` or `pinball-core` for Breakout — wrong ownership.
+</PACKAGE_SELECTION>
+
+<CANVAS_SETUP>
+* A single canvas `ref` on `<GamePage>`:
+  ```tsx
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    const dpr = window.devicePixelRatio || 1;
+    const resize = () => {
+      const { width, height } = canvas.getBoundingClientRect();
+      canvas.width  = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+    // ... init game, start rAF loop
+    return () => { ro.disconnect(); cancelAnimationFrame(rafRef.current); };
+  }, []);
+  ```
+* Logical resolution is fixed (e.g. 960×540); display size is fluid. All math uses logical units and we scale to display just before drawing.
+
+<GAME_STATE>
+```ts
+interface Ball { x: number; y: number; vx: number; vy: number; r: number; stuck: boolean; }
+interface Paddle { x: number; y: number; w: number; h: number; speed: number; }
+interface Brick { x: number; y: number; w: number; h: number; hp: number; kind: BrickKind; alive: boolean; }
 ```
-</CONSTANTS_FILE>
+* Persistent per-frame state lives in `useRef`: `ballsRef`, `bricksRef`, `paddleRef`. React state only holds score, lives, level — values that must trigger a UI redraw.
+* `setScore` when score changes; **never** setState per-frame for positions.
+</GAME_STATE>
 
-<PHYSICS_PATTERNS>
-* **PADDLE — must be PINNED, not merely immovable**: `setImmovable(true)` + `setAllowGravity(false)` is NOT enough. On a DYNAMIC Arcade body, `setImmovable` only stops the paddle from being pushed *as a collision target*; the bounce-separation impulse from a fast `setBounce(1)` ball (and worldbounds) still hands the paddle a y-velocity and **flings it off the floor ("挡板一碰就飞上去")**. The paddle must be PINNED every frame so it can ONLY move horizontally:
-  ```typescript
-  const PADDLE_Y = this.scale.height - 40; // fixed floor line, computed once in create()
-  // create(): setImmovable + no gravity, move x via pointermove (clamp to screen), never by velocity.
-  paddle.setImmovable(true); (paddle.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
-  this.input.on('pointermove', p => { paddle.x = Phaser.Math.Clamp(p.x, halfW, this.scale.width - halfW); });
-  // update(): hard-lock Y every frame. body.reset(x, y) re-syncs BOTH the body position and zeroes
-  // velocity in one call — more robust than setting sprite.y alone (avoids a 1-frame position tear
-  // when separation has already shoved the body).
-  (paddle.body as Phaser.Physics.Arcade.Body).reset(paddle.x, PADDLE_Y);
-  ```
-  Do NOT give the paddle `setCollideWorldBounds(true)` and rely on it to stay put — that bounces it; locking Y in `update()` is the reliable mechanism.
-
-* **BALL launch & anti-stall**:
-  ```typescript
-  this.physics.velocityFromAngle(angle, BALL_SPEED, ball.body.velocity); // angle in degrees, upward
-  ball.setBounce(1).setCollideWorldBounds(true); // perfectly elastic; bottom wall handled separately (see life loss)
-  // Anti-horizontal-stall: every bounce, if |vy| < 100 nudge it so the ball can't loop forever along a wall.
-  if (Math.abs(ball.body.velocity.y) < 100) ball.body.velocity.y = ball.body.velocity.y < 0 ? -100 : 100;
-  // Keep constant speed: after any bounce, renormalize to current BALL_SPEED.
-  ```
-
-* **PADDLE BOUNCE — control the angle, not just reflection**: the bounce angle MUST depend on WHERE the ball hits the paddle, or the game is unplayable (ball reflects at fixed angles forever). Use an overlap/collider callback:
-  ```typescript
-  const rel = Phaser.Math.Clamp((ball.x - paddle.x) / (paddle.width / 2), -1, 1); // -1 left edge .. +1 right edge
-  const bounceAngle = -90 + rel * 60;  // straight up at center, ±60° at edges
-  this.physics.velocityFromAngle(bounceAngle, this.currentBallSpeed, ball.body.velocity);
-  ```
-
-* **BRICKS — staticGroup + HP via data**: bricks never move — use `this.physics.add.staticGroup()` (NEVER `this.add.group()`, which has no body and silently no-ops in colliders). Multi-hit bricks track HP:
-  ```typescript
-  brick.setData('hp', hp);
-  // on ball-brick collision callback:
-  const hp = brick.getData('hp') - 1;
-  if (hp <= 0) { brick.disableBody(true, true); this.bricksLeft--; maybeDropPowerup(brick.x, brick.y); }
-  else { brick.setData('hp', hp); brick.setTexture(`brick_${hp}`); } // visual feedback per hit
-  ```
-  Lay out the grid from canvas size so it always fits: `brickW = (GAME_W - (BRICK_COLS+1)*BRICK_GAP) / BRICK_COLS`, place at cell center (Phaser origin is center).
-
-* **LIFE LOSS — disable the bottom wall, detect the drop**: the ball MUST be able to fall off the bottom; bouncing on all four walls makes it immortal.
-  ```typescript
-  this.physics.world.setBoundsCollision(true, true, true, false); // left, right, top ON; bottom OFF
-  ball.body.onWorldBounds = true;
-  this.physics.world.on('worldbounds', (body) => { /* only top/side fire; bottom is off */ });
-  // In update(): if (ball.y > GAME_H + 20) this.loseLife();  // ball passed the open bottom
-  // loseLife: lives--; if 0 → game over; else reset ball onto paddle (sticky launch).
-  ```
-
-* **STICKY LAUNCH (start of life)**: park the ball on the paddle (`ball.body.setVelocity(0)`, follow paddle.x in `update()`), launch on tap/space. Without this the ball drops instantly at spawn and the player loses a life before they can react.
-
-* **Register colliders AFTER objects exist** — never call `physics.add.collider(this.ball, this.bricks, ...)` while `this.ball`/`this.bricks` is still undefined. Build paddle, ball, and the brick group first, then register all colliders.
-</PHYSICS_PATTERNS>
-
-<POWERUPS_AND_PROGRESSION>
-* **Power-up drops** (optional but expected): on brick destroy, `Math.random() < POWERUP_CHANCE` spawns a falling capsule (`setVelocityY(150)`, gravity still 0). Overlap with paddle applies the effect, then destroy the capsule. Common effects: wider paddle (`paddle.displayWidth *= 1.5` + reset timer), multi-ball, slow-ball, extra life. Every timed effect MUST store a timer and revert on expiry (a permanent "wide paddle" breaks difficulty).
-* **MULTI-BALL** — keep balls in a `physics.add.group()` and iterate; life is lost only when the LAST ball drops (`if (this.balls.countActive() === 0) this.loseLife()`), never on the first. Recycle dropped balls with `group.killAndHide` / re-`enableBody`, don't `destroy` then leak.
-* **LEVEL CLEAR** — when `this.bricksLeft === 0`: stop the ball, show a transition, then load the next layout (re-init bricks, reset ball to paddle, optionally `currentBallSpeed = Math.min(BALL_SPEED_MAX, currentBallSpeed * 1.1)`). Do NOT just `scene.restart()` — that wipes score/lives unless they're re-seeded from a store.
-</POWERUPS_AND_PROGRESSION>
-
-<MOBILE_CONTROLS>
-```javascript
-// Brick-breaker is pointer-driven on both desktop and mobile — no D-pad needed.
-this.input.on('pointermove', (p) => {
-  this.paddle.x = Phaser.Math.Clamp(p.x, this.paddle.displayWidth / 2, this.scale.width - this.paddle.displayWidth / 2);
-});
-this.input.on('pointerdown', () => this.launchBall()); // tap to launch a sticky ball
+<MAIN_LOOP>
+```ts
+const step = (t: number) => {
+  const dt = Math.min(32, t - lastRef.current) / 1000; // seconds
+  lastRef.current = t;
+  if (phaseRef.current === "playing") update(dt);
+  draw();
+  rafRef.current = requestAnimationFrame(step);
+};
 ```
-</MOBILE_CONTROLS>
+* `dt` is in **seconds**; speeds are `px/s`; position `x += vx * dt`.
+* `Math.min(32ms, ...)` prevents tunneling after a tab switch.
+* Pause: when `phaseRef.current !== "playing"`, skip `update` but keep drawing so overlays render cleanly.
+</MAIN_LOOP>
+
+<PHYSICS>
+* **Ball vs walls**:
+  * `x - r < 0` → reflect `vx = |vx|`, `x = r`; same for `x + r > W`.
+  * `y - r < 0` → `vy = |vy|`, `y = r`.
+  * `y - r > H` → out of bounds → lives -= 1, reset.
+* **Ball vs paddle** (circle vs AABB):
+  * `closestX = clamp(ball.x, paddle.x, paddle.x + paddle.w)`, same for y.
+  * `dx = ball.x - closestX; dy = ball.y - closestY; if dx*dx + dy*dy < r*r` → hit.
+  * Reflection angle depends on the hit offset: `offset = (ball.x - paddleCenter) / (paddle.w/2)` in [-1, 1]; `angle = offset * 60°`; `vy = -|speed * cos|, vx = speed * sin`. This lets the player aim.
+  * After a hit, snap `ball.y = paddle.y - r - 0.01` so the ball doesn't stick.
+* **Ball vs brick**: same AABB test; reflect along whichever axis has smaller penetration:
+  ```ts
+  const overlapX = r + brick.w/2 - Math.abs(ball.x - brickCenterX);
+  const overlapY = r + brick.h/2 - Math.abs(ball.y - brickCenterY);
+  if (overlapX < overlapY) ball.vx *= -1; else ball.vy *= -1;
+  ```
+  Reflect at most once per frame; scanning bricks, mark a `hitThisFrame` to avoid double reflects.
+* **Multi-ball / split**: `balls: Ball[]`; the "Multi-ball" power-up adds two more. Each ball collides independently; a life is only lost when all balls go out of bounds.
+</PHYSICS>
+
+<PADDLE_INPUT>
+* **Mouse**: `onPointerMove` (on the canvas or window) sets `paddle.x = e.clientX - canvasLeft - paddle.w/2`, clamped to `[0, W-paddle.w]`.
+* **Keyboard**: `useRef` holds `left/right` booleans; `useEffect` binds keydown/up; main loop `paddle.x += (right - left) * paddle.speed * dt`.
+* **Touch**: `onPointerDown/Move` like mouse; add `touch-action: none` to the canvas to prevent page scroll.
+* **Launch**: the ball starts `stuck=true` sitting on the paddle. Space or click → `stuck=false` and apply an initial velocity.
+</PADDLE_INPUT>
+
+<LEVELS>
+* Level JSON: `Level = { rows: number; cols: number; grid: (BrickKind|null)[][]; palette: Record<BrickKind,{hp,score,color,drop?}>; }`.
+* Ship at least 5 levels; when the player clears all breakable bricks, advance.
+* Level load: `initLevel(level)` builds the `bricks` array. On level change, reset balls and center the paddle.
+</LEVELS>
+
+<POWERUPS>
+* When a special brick is destroyed, sometimes spawn a `Drop { x, y, vy, kind }`. Kinds include `wide` (bigger paddle), `slow` (slower ball), `multi` (split into 3 balls), `laser` (paddle shoots), `life` (+1).
+* Each frame, `y += vy * dt`; on AABB collision with the paddle, apply the effect; if it falls off the bottom, discard it.
+* Buffs have a duration: `wideUntil = time + 15000`; the main loop restores state when the timer expires.
+* Same-kind pickups **refresh** the duration rather than stacking multiplicatively — prevents runaway difficulty.
+</POWERUPS>
+
+<VISUALS>
+* Draw order: clear → background grid/pattern → bricks → paddle → balls → drops → particles → HUD text (HUD can also live in the React layer as `absolute` positioned over the canvas).
+* **Particles**: on brick break spawn 6–10 tiny squares with random `vx/vy` and a 300ms `life` fading alpha. Cap particles at 200; discard beyond that to keep frames stable.
+* **Screen shake**: on combos / big booms, apply `transform: translate(shakeX, shakeY)` to the canvas via CSS; decay toward 0 with rAF.
+* **Dark mode**: read the theme via CSS variables or `document.documentElement.classList.contains('dark')` and swap the palette.
+</VISUALS>
 
 <AUDIO>
-- Paddle bounce blip, brick break crunch (vary pitch by row), power-up chime, life-loss thud, level-clear fanfare.
-- Use Phaser built-in audio; trigger only after first interaction (autoplay policy).
+* Short SFX: `paddle-hit.wav`, `brick-break.wav`, `life-lost.wav`. Preload and pool 4 copies each so overlapping plays don't clip.
+* Unlock `AudioContext` after the first user gesture (play a silent tick) to bypass browser autoplay policies.
+* Background music loops per level; `bgm.pause()` on pause.
 </AUDIO>
 
-<ZUSTAND_RULES>
-All-Phaser UI is the default — manage score / lives / level inside the scene, no Zustand needed. Only add Zustand if React components outside the canvas must reflect game state (see SKILL.md shared rules). If used: call `useGameStore()` once at the top of the component and destructure — never inside JSX conditionals or `.map()` (React hooks-order crash).
-</ZUSTAND_RULES>
+<REACT_OVERLAY>
+* HUD: score / lives / level in a `<div className="absolute top-2 left-2">` positioned over the canvas; updates only on `setState`.
+* Menu / pause / clear: shadcn `Dialog` or `AlertDialog` (bundled). Opening flips `phaseRef` to `"paused"`, and the main loop halts naturally.
+* Settings: difficulty, ball speed, volume in a `Sheet` side panel. Persist `PLAYER_SPEED_MULT`, `BALL_SPEED_MULT` to localStorage.
+</REACT_OVERLAY>
 
-<SCENE_LIFECYCLE>
-* **TEXTURE keys & format — CRITICAL**: every texture key used in `create()` must be loaded in `preload()` — a missing key silently renders as a green checkerboard. Foreground art (paddle, ball, bricks, power-ups) MUST be PNG (JPEG has no alpha → opaque rectangle); JPEG only for full-screen backgrounds.
-* **BALL body — `setCircle(r)` uses NATIVE frame px, NOT the displayed size**: a square body on a round ball causes phantom corner bounces, so use `setCircle`. But `setCircle(r)` is measured on the ORIGINAL texture and does NOT scale with `setDisplaySize`/`setScale`. The common bug: `ball.setDisplaySize(10,10); ball.setCircle(10)` on a 20×20 texture leaves the body radius 10 (diameter 20) while the ball LOOKS 10px wide — a 2× collision body that makes the ball bounce off thin air ("斜着乱飞"). Fix: keep the texture at its intended size (don't `setDisplaySize`) and `setCircle(frameW/2)`, OR pass `setCircle(displayRadius / scale)`. The body circle must visually match the rendered ball under Arcade `{ debug: true }`.
-* **`shutdown()` must be a class method** — `this.events.once('shutdown', ...)` does not reliably fire on `scene.restart()`. In `shutdown()`: `this.time.removeAllEvents()`, `this.tweens.killAll()`, mirror every `EventBus.on` with `EventBus.off`, and `group.destroy(true)`.
-* **Reset game state on scene restart** — reinitialize score, lives, level, `bricksLeft`, `currentBallSpeed` at the top of `init()` / `create()`, not only in the game-over handler.
-* **Keep state inside the scene** — score, lives, level, brick counts live as scene-local properties; React only hosts the canvas container.
-* **Physics callback guards** — `collider`/`overlap` callbacks fire straight from the engine, NOT gated by `update()`. After game-over add `if (this.isGameOver) return` at the top of each, or disable the body. `setActive(false)` alone does NOT stop callbacks.
-* **Timer / collider / group ownership** — power-up timers, dynamically spawned balls, and colliders must be cleared in `shutdown()` (`world.removeCollider(c)`, `group.destroy(true)`); rebuilding without clearing fires stale callbacks (double damage, ghost balls).
-* **After `destroy()`, null the reference** — a destroyed ball/brick leaves a dangling pointer; a later `if (this.ball)` check passes then crashes. Always `obj.destroy(); obj = null`.
-* **Tween visibility / input — CRITICAL** — `alpha=0` / `setVisible(false)` hides an object but does NOT remove its input hit-area; pointer events still fire on transparent objects, intercepting taps. Call `disableInteractive()` when hiding, `setInteractive()` when showing.
-</SCENE_LIFECYCLE>
-</GAME>
+<PITFALLS>
+* **Running physics inside setState**: forces React to reconcile hundreds of nodes per frame → drops frames. Keep physics in `useRef`; setState is only for HUD / score.
+* **Forgetting dpr**: Retina looks blurry and touch hit-tests drift. Always `ctx.setTransform(dpr,0,0,dpr,0,0)`; do NOT stretch via CSS on the canvas.
+* **Wall-jitter after reflection**: if you flip velocity but don't clamp the position back inside the wall, next frame reflects again and `vx` oscillates. After reflection, `x = r + 0.01` / `x = W - r - 0.01`.
+* **Multi-ball double-hitting a brick**: two balls same frame destroy one brick twice. Add a `hitId` or `alive` check before applying damage.
+* **Unbounded ball speed**: stacked power-ups can push velocity past collision resolution (tunneling). Enforce `Math.hypot(vx,vy) <= MAX_SPEED`, where MAX_SPEED keeps one-frame travel under half a brick.
+* **Ball flies off after tab return**: dt clamp addresses this.
+* **Canvas doesn't resize with container**: `window.resize` alone misses container-size changes. Use `ResizeObserver`.
+</PITFALLS>
+
+<COMPLETENESS>
+* Main menu → level select → play → result: full chain playable.
+* At least 5 levels; each with a distinct layout; include at least 3 brick types (normal / multi-hit / indestructible).
+* At least 4 power-up types.
+* Persist score, best score, and level completion in localStorage.
+* Pre-ship checklist: `pnpm dev` opens cleanly; `pnpm lint` passes; Retina rendering is crisp; tab-switch return doesn't tunnel; dark mode looks right.
+</COMPLETENESS>
+</BRICK_BREAKER_REACT>

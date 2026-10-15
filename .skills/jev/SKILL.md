@@ -15,8 +15,13 @@ confidence, and a full probability distribution over the allowed outcomes.
 - **Endpoint**: `POST https://app-evp0b1kqhrlt-api-79jKnBxVg4oL.gateway.appmedo.com/v1/systemone`
 - **Auth**: `platform_managed` — header `X-Gateway-Authorization: Bearer ${INTEGRATIONS_API_KEY}`
 - **Body**: `{ "model": "jev-1.13.0", "state": <string | object>, "questions": <object> }`
+  (pinned version; `jev-latest` and `jev-preview` are aliases, see
+  [references/systemone-api.md](references/systemone-api.md))
+- **Language**: English is Jev's primary language. Write `instructions` and `criteria` in English;
+  a non-English `state` works but is less accurate, so check `confidence` before acting on it.
 - **Response time**: typically 100–600 ms end-to-end
-- **Billing**: billed per call
+- **Billing**: TypeSafe bills input tokens (output tokens are free); the platform applies its own
+  quota on top (HTTP 429 when exhausted)
 
 ### What Jev is for, and what it is not
 
@@ -43,6 +48,10 @@ Every question gets a **stable name**; answers come back keyed by that name. Que
 calibration thresholds and the failure modes are in
 [references/question-types.md](references/question-types.md).
 
+A fourth type, `box` (find an object in an image), and image input are experimental upstream
+features, not enabled by default; see the last section of
+[references/systemone-api.md](references/systemone-api.md) before using them.
+
 ## Generation-Time Usage (Agent Direct Call)
 
 The request/response logic lives in `scripts/call_jev.py`; do not re-implement the HTTP call.
@@ -56,6 +65,8 @@ python3 <skill-path>/scripts/call_jev.py --request /tmp/jev-request.json
 
 Script prints `{"model": ..., "answers": {<name>: {...}}, "usage": {...}}` on success.
 Read the fields the app branches on — do not paste the whole JSON back verbatim.
+`--raw` prints the full upstream response instead; `--header NAME:VALUE` adds a request header
+(needed for the experimental features in [references/systemone-api.md](references/systemone-api.md)).
 
 **The Bash tool timeout must be set to 600000ms (600 seconds)** when running this script;
 the default 120s will cut off slower calls.
@@ -65,7 +76,7 @@ A request file:
 ```json
 {
   "model": "jev-1.13.0",
-  "state": { "message": "你家猫最近怎么样", "history": [] },
+  "state": { "message": "How is your cat doing lately?", "history": [] },
   "questions": {
     "intent": {
       "type": "choice",
@@ -97,10 +108,14 @@ browser. Full boilerplate (Edge Function + frontend invoke, quota/balance handli
 
 - **Key security**: `INTEGRATIONS_API_KEY` is read only server-side in the Edge Function or by the
   generation-time script. Never expose it to the frontend, never log it, never put it in a prompt.
-- **Error handling**: forward `429` (quota exceeded) and `402` (insufficient balance) bodies to the
-  user as-is. Treat any other non-2xx as an upstream failure; do not silently retry writes.
-- **Billing**: Jev is billed per call. Batch independent questions into **one** request instead of
-  issuing several calls; do not re-ask a question whose answer has not changed.
+- **Error handling**: `429` means the platform quota is exhausted or TypeSafe's rate limit was hit:
+  retry at most twice with backoff, then forward the body to the user as-is. Forward `402`
+  (insufficient balance) as-is. Retry `529` and `5xx` with backoff (Jev is read-only, so retries are
+  safe); fix the request on `400` and `422`. Full table in
+  [references/systemone-api.md](references/systemone-api.md).
+- **Billing**: Jev is billed by input tokens, and the `state` is counted once per request. Batch
+  independent questions about the same `state` into **one** request instead of issuing several
+  calls; do not re-ask a question whose answer has not changed.
 - **Cost of a wrong question**: Jev never returns a type error, but it will happily answer a badly
   worded question. Low `confidence` means the question or the `state` was ambiguous — check
   `confidence` before acting on an answer.
@@ -108,8 +123,11 @@ browser. Full boilerplate (Edge Function + frontend invoke, quota/balance handli
 ## References
 
 - [references/systemone-api.md](references/systemone-api.md) — full request/response contract,
-  parameter tables, Edge Function boilerplate, generation-time script usage.
+  parameter tables, error codes, models and limits, Edge Function boilerplate, generation-time
+  script usage, and the experimental Images / Box / long-context features.
 - [references/question-types.md](references/question-types.md) — how to write `choice` / `score` /
   `noul` questions, limits, confidence thresholds, and the pitfalls that silently ruin a rubric.
 - [references/use-cases.md](references/use-cases.md) — worked examples, including a full chat
   analysis pipeline that shows Jev being used as a judge rather than a generator.
+- Upstream docs: <https://docs.typesafe.ai> — API reference, architecture patterns (fan-out,
+  confidence-gated routing, composite scoring, intent routing) and cookbooks.

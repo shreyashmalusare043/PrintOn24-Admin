@@ -1,104 +1,134 @@
-<GAME>
-* **Entrypoint — CRITICAL**: `index.html` always loads `src/main.tsx` (React root) — NEVER modify it. Initialize `Phaser.Game` inside `src/App.tsx` via `useEffect` with `initialized.current` guard. Game scenes and logic go under `src/game/`.
-* **`index.html` body** — `src/index.css` already sets `overflow:hidden` and Tailwind Preflight zeroes body margin; do NOT add duplicate inline styles to `index.html`.
-* **FORBIDDEN packages** (available in package.json but must NOT be used for 2D games): `pixi.js` (use Phaser 3), `framer-motion` / `gsap` (use Phaser Tween system), standalone `import 'matter-js'` (use Phaser's built-in `physics: { default: 'matter' }`).
-* ALWAYS use Phaser 3. NEVER pure React game loop.
-* Make full use of assets in manifest.json. Landscape (960×640). Gravity: 0.
+<TOWER_DEFENSE_REACT>
+# 塔防/车道防守；本裁剪集无 turret/wave 同步包。
 
-<GAME_TYPE_SELECTOR>
-- Classic TD (free placement, enemy follows path) → `<CLASSIC_TD_PATTERNS>`
-- PvZ lane-based TD (fixed lanes, drag-to-place plants, zombie wave per lane) → `<PVZ_LANE_PATTERNS>`
-- Both share: `<WAVE_SPAWNING>`, `<PROJECTILE_SYSTEM>`, `<UPGRADE_SELL>`
-</GAME_TYPE_SELECTOR>
+Use for: tower defense / PvZ / lane defense. Canvas for paths/enemies/bullets;
+React DOM for slots, HUD, build menu.
 
-<CONSTANTS_FILE>
-```typescript
-export const TILE_SIZE = 64;
-export const TOWER_TYPES = {
-  basic:  { damage:10, range:150, fireRate:1000, cost:50 },
-  sniper: { damage:50, range:300, fireRate:2000, cost:100 },
-  splash: { damage:15, range:120, fireRate:1500, cost:75, splashRadius:60 },
-};
-export const ENEMY_TYPES = {
-  grunt: { hp:50,  speed:80,  reward:10 },
-  tank:  { hp:200, speed:40,  reward:30 },
-  fast:  { hp:30,  speed:160, reward:15 },
-};
-export const WAVE_INTERVAL=5000; export const STARTING_GOLD=200; export const STARTING_LIVES=20;
-export const LANE_COUNT=5; export const SUN_GENERATE_INTERVAL=7000;
+<PACKAGE_SELECTION>
+* No synchronized `turret-*` / `wave-*` / `path-*` in this trim. Waves, towers,
+  and pathing are **app-owned**.
+* Optional HUD: `score-react`, `resource` is not synced — keep gold/lives in
+  React state.
+</PACKAGE_SELECTION>
+
+<COORDINATE_MODEL>
+* **Grid coordinates** (tower slots, path nodes): `gridX, gridY`. **World coordinates**: `worldX = gridX * TILE + TILE/2`.
+* Enemies walk along a predefined `path: {x,y}[]` in world coordinates. Locate the current position by a `progress` scalar in [0, pathLength], interpolating between `path[idx]` and `path[idx+1]`.
+* Tower slots are fixed; enemies and bullets move. Use squared distances for collision (avoid `Math.sqrt`).
+
+<STATE_LAYOUT>
+* **Per-frame persistent data** lives in `useRef`:
+  * `enemiesRef.current: Enemy[]`
+  * `towersRef.current: Tower[]`
+  * `bulletsRef.current: Bullet[]`
+  * `waveRef.current: { index, timeToNext, remainingSpawn }`
+* **React state**: score, gold, lives, current wave, `selectedTowerId`, `buildMenuOpen`. Only setState when the UI must redraw.
+* **Path and level data**: constants in `levels.ts`, not mutated at runtime.
+</STATE_LAYOUT>
+
+<WAVE_FSM>
+```ts
+type Phase = "menu" | "prep" | "spawning" | "clearing" | "over" | "victory";
 ```
-</CONSTANTS_FILE>
+* `prep`: between waves, the player can build / upgrade / sell freely. Clicking "Start Wave" transitions to `spawning`.
+* `spawning`: hatch enemies per `wave.enemies: {kind, delay}[]`. When all have spawned, move to `clearing`.
+* `clearing`: on all enemies dead or reached-end, advance to the next `prep`. Enough end-reaches to zero out lives → `over`.
+* **Wave-end check — CRITICAL**: `spawnQueue.length === 0 && enemies.length === 0`, both required. Checking only `enemies` misfires while the last enemy is still queued to spawn.
+</WAVE_FSM>
 
-<CLASSIC_TD_PATTERNS>
-* **Path following**: compute angle to next waypoint; `setVelocity(cos*speed, sin*speed)`. Advance waypoint when dist < 5px. Call `reachEnd()` when all waypoints consumed.
-* **Tower targeting**: in tower update, clear `target` if inactive or out of range; scan enemies group for nearest in-range. Fire only when `canFire` flag is true (reset by `time.addEvent` loop).
-* **Placement validation**: snap pointer to grid (`Math.floor(ptr.x / TILE_SIZE)`). Reject if cell is on path (`pathTiles Set`) or already has tower. Show green/red overlay + range circle on hover.
-</CLASSIC_TD_PATTERNS>
+<ENEMY_MOVEMENT>
+* Each frame advance: `enemy.progress += enemy.speed * dt`; `speed` is in `world units per second`.
+* Resolve position from `progress` by walking the path segments:
+  ```ts
+  let remain = e.progress;
+  for (let i = 0; i < path.length - 1; i++) {
+    const seg = distances[i];
+    if (remain <= seg) {
+      const t = remain / seg;
+      e.x = lerp(path[i].x, path[i+1].x, t);
+      e.y = lerp(path[i].y, path[i+1].y, t);
+      e.dir = seg direction; break;
+    }
+    remain -= seg;
+  }
+  if (remain > 0) { e.reachedEnd = true; }
+  ```
+* Reached the end → subtract a life, `alive=false`. HP hits 0 → drop gold, `alive=false`.
+</ENEMY_MOVEMENT>
 
-<PVZ_LANE_PATTERNS>
-* **Lane layout**: `LANE_Y(lane) = offsetY + lane * LANE_HEIGHT + LANE_HEIGHT/2`. Grid of boolean slots `[LANE_COUNT][GRID_COLS]`.
-* **Sun resource**: `time.addEvent({ delay: SUN_GENERATE_INTERVAL, loop:true })` drops clickable sun from sky (auto-disappear after 7s). Sunflowers also produce sun on their own timer.
-* **Plant placement**: tap seed card to select (check sun cost); tap empty slot to plant, deduct sun. Shovel mode: tap occupied slot to remove plant, refund 0%.
-* **Zombie movement**: move leftward each frame (`x -= speed * delta/1000`). Stop and attack when a plant occupies the current column in same lane. `reachHome()` if `x < 0`.
-* **Plant attack**: shooter plants fire at the closest zombie in the same lane with `x > plant.x`.
-</PVZ_LANE_PATTERNS>
+<TOWERS>
+* Tower defs (immutable table): `{ id, cost, damage, range, fireRate, projectileSpeed, kind: "single"|"aoe"|"slow"|"beam", upgrade: TowerUpgrade[] }`.
+* Each frame per tower:
+  ```ts
+  if (time - tower.lastFire < tower.fireRate) continue;
+  const target = pickTarget(enemies, tower); // see targeting
+  if (!target) continue;
+  tower.lastFire = time;
+  spawnBullet(tower, target);
+  ```
+* **Targeting strategies**: default `"first"` (closest to end). Also offer `"last"`, `"closest"`, `"strongest"`. Each tower's popover gets a dropdown for switching.
+* **Upgrades**: `tower.level` indexes into `upgrade[level]` for new stats; costs gold; disable the button when maxed.
+* **Sell**: refund 70% of total cost; the same tile may be rebuilt.
+</TOWERS>
 
-<WAVE_SPAWNING>
-* **Phaser timer only** — NEVER `setTimeout` (drifts): `time.addEvent({ delay: spawnInterval, repeat: count-1, callback: spawnEnemy })`.
-* **Wave complete**: check `enemies.countActive(true) === 0` after each enemy death.
-* **Victory condition — REQUIRED**: after the last wave completes (all enemies dead + spawn timer done), transition to a VictoryScene or show a victory overlay. Define `MAX_WAVES` and check `this.currentWave >= MAX_WAVES && enemies.countActive(true) === 0`. A game with no reachable win state is unplayable.
-* **Sun/resource balance**: verify the player can afford the cheapest action within the first 30–45 seconds. Formula: `cheapestCost / incomePerSecond ≤ 40s`. Default `SUN_GENERATE_INTERVAL = 7000ms` with cost-50 cheapest plant means 350s to first purchase — always too slow. Suggested: `SUN_GENERATE_INTERVAL = 5000` + `startingSun = 50`.
-* **Between-wave countdown**: `time.addEvent({ delay:1000, repeat:... })` counting down on-screen. Provide "Send Early" button that cancels timer and starts next wave immediately.
-</WAVE_SPAWNING>
+<BULLETS>
+* Homing tracker `{ x, y, target, speed, damage, kind }`.
+* Each frame move toward the target:
+  ```ts
+  const dx = t.x - b.x, dy = t.y - b.y;
+  const d = Math.hypot(dx, dy);
+  if (d < b.speed * dt || !t.alive) { hit(b, t); b.dead = true; }
+  else { b.x += (dx/d) * b.speed * dt; b.y += (dy/d) * b.speed * dt; }
+  ```
+* AoE bullets: on hit, apply `damage * falloff` to all enemies within `radius`; `falloff = 1 - d/radius` or a stepped tier.
+* Slow bullets: on hit, set `slowUntil = time + duration` and multiply speed by `slowMult`.
+* Beam towers: no projectile; deal damage directly to the target each frame at `dps = damage / fireRate`. Render as a line from tower to target.
+</BULLETS>
 
-<PROJECTILE_SYSTEM>
-* **Object pool**: `physics.add.group({ maxSize:50, classType:Bullet })`. `physics.add.overlap(projectiles, enemies, onHit)`.
-* **Predictive aim**: `timeToImpact = dist/BULLET_SPEED`; aim at `enemy.pos + velocity * timeToImpact`.
-* **Splash**: on hit, iterate all enemies within `splashRadius` and deal damage. Show particle/circle effect.
-</PROJECTILE_SYSTEM>
+<PATHFINDING>
+* Fixed-path maps → no pathfinding needed.
+* If the map allows building on any grass (BTD-style), rerun A* once per placement. **Don't re-run per frame.**
+* Build preview: while `buildMenuOpen` and hovering a tile, tentatively run A*; if it blocks all paths, disable the build button.
+</PATHFINDING>
 
-<UPGRADE_SELL>
-* **Upgrade**: on tower click, show panel with upgrade cost and sell value. Apply stat bonuses (`damage`, `range`, `fireRate`) and swap texture to level variant. Max 3 levels.
-* **Sell**: refund 60% of total spent gold (`Math.floor(totalCost * 0.6)`). Remove tower from grid array.
-* **UI**: panel positioned near tower; hide on click-away or ESC.
-</UPGRADE_SELL>
+<CANVAS_LAYER>
+* One canvas for background grid + path + enemies + tower bodies + bullets + particles.
+* HUD, tower range indicators, and the build menu live in React DOM as `position: absolute` over the canvas.
+* **Range circles**: only draw for the currently selected/hovered tile; hide otherwise to reduce noise.
+* Enemy HP bars: `fillRect(x-16, y-24, 32*ratio, 4)` with `ratio = hp/maxHp`; skip when full.
+</CANVAS_LAYER>
 
-<MOBILE_CONTROLS>
-```javascript
-if (!this.game.device.os.desktop) {
-  // Classic TD: bottom panel for tower cards (min 44px), tap to select, tap map to place/inspect
-  // Pinch-to-zoom: track 2-pointer distance delta, apply to camera.zoom (clamp 0.5–2)
-  // PvZ: seed card strip at top; drag-from-card to lane slot for intuitive placement
-}
-```
-</MOBILE_CONTROLS>
+<REACT_UI_LAYER>
+* **Bottom build bar**: shadcn `Card` + a set of `Button`s with `lucide-react` icons (`Bomb`, `Snowflake`, `Zap`, etc.). Disabled when gold is short.
+* **Top HUD**: `Badge` for wave / lives / gold; `Progress` for the current wave.
+* **Tower details**: clicking a placed tower opens a `Popover` above it with level, DPS, sell value, upgrade button, and target-strategy switcher.
+* **Quick start / speed**: a `Button` "Start Wave" flips to `phase="spawning"`. Provide 2x/4x speed toggles that adjust `timeScale` (main loop uses `dt *= timeScale`).
+* **Result**: `Dialog` for wins / losses showing score, lives left, time; "Try Again" / "Next Level".
+</REACT_UI_LAYER>
 
-<AUDIO>
-- Different attack sounds per tower type. Enemy death sounds. Wave start/end announcements.
-- PvZ: plant placement thud, sun collect chime, zombie groan, cherry bomb explosion.
-- Upgrade confirmation ding, sell cash register sound.
-- Trigger only after first interaction (autoplay policy).
-</AUDIO>
+<ECONOMY>
+* Constants: starting gold + lives per level.
+* Drops: `enemy.reward` directly `setMoney(+n)`; bosses drop bonuses.
+* Interest (optional): between waves, `interest = floor(money * 0.02)`, rewards saving; use to balance difficulty.
+* Star rating: percentage of remaining lives → 1/2/3 stars.
+</ECONOMY>
 
-<ZUSTAND_RULES>
-All-Phaser UI is the default — manage all state inside scenes, no Zustand needed. Only add Zustand if React components outside the canvas must reflect game state (see SKILL.md shared rules).
-</ZUSTAND_RULES>
+<PITFALLS>
+* **setState per frame — CRITICAL**: `setEnemies` / `setBullets` reconciles hundreds of nodes per frame and drops to 10fps. All realtime data goes in `useRef`; setState only when the UI actually changes (HP icon, gold).
+* **Missed wave-end**: see the FSM section — both `spawnQueue` and `enemies` must be empty.
+* **Pause that doesn't actually pause**: mixing `setInterval` and rAF makes pausing leaky. Use a single rAF loop and gate on `phase` at the top of `update()`.
+* **DPR + hit offsets**: tower hit-tests must run in **logical coordinates**. Divide `e.clientX - rect.left` by the CSS scale.
+* **UI shows stale stats after upgrade**: bumping `useRef` alone doesn't rerender; also setState so the details popover refreshes.
+* **Unbounded AoE**: giant radius + hundreds of enemies = O(n) per bullet. Cap max hits per bullet or use a quadtree (usually unnecessary).
+* **No seed → no replay**: wave order, chest RNG, etc. should feed off a seed; include the seed in save export/import.
+</PITFALLS>
 
-<SCENE_LIFECYCLE>
-* **`shutdown()` must be a class method** — in `shutdown()`: `this.time.removeAllEvents()`, mirror every `EventBus.on` with `EventBus.off`, `enemies.destroy(true)`, `projectiles.destroy(true)`, and `towers.forEach(t => world.removeCollider(t.collider))`.
-* **Reset game state on scene restart** — reinitialize gold, lives, and wave counters at the top of `init()` or `create()`, not only in the settlement handler.
-* **Keep state inside the scene** — all game state lives as scene-local properties; React's role is only to host the canvas container.
-* **Tower / collider / timer ownership** — each tower holds a reference to its `rangeCollider`; call `world.removeCollider` before `tower.sprite.destroy()` on sell or level restart, otherwise the old collider keeps triggering attack callbacks.
-* **`setDisplaySize` / `setScale` do not sync the physics body** — enemy sprites scaled by type (tank larger than grunt) must be followed by `body.setSize(w, h).setOffset(x, y)`, otherwise large enemies have a default-sized hitbox and projectiles miss.
-* **Projectiles must not use `setCollideWorldBounds(true)`** — call `disableBody(true, true)` to return them to the pool when they leave the map; bouncing projectiles re-enter the play area and deal unintended damage.
-* **Tween visibility / input — CRITICAL** — `alpha=0` or `setVisible(false)` makes an object invisible but does NOT remove its input hit-area; pointer events still fire on transparent objects, silently intercepting taps intended for elements beneath. Always call `disableInteractive()` when hiding and `setInteractive()` when showing again.
-</SCENE_LIFECYCLE>
-
-<PHASE_FSM>
-**Wave / boss phases require an explicit finite state machine.**
-* Define `type Phase = 'prepare' | 'wave' | 'boss' | 'transition' | 'victory'` and hold it in `this.phase`. All spawner, attack timer, and boss skill timer callbacks must guard with a phase check at entry.
-* Phase transitions must be atomic — update `this.phase` first, then toggle timer and group active states.
-* Wave end requires BOTH `enemies.countActive(true) === 0` AND the spawn timer finished — missing either leaves the final wave stuck.
-* **Multiplayer warning** — Realtime APIs are message transports, not game protocols. Co-op tower defense needs an authority model (who is host), action queue, and room state machine; do not broadcast raw enemy positions every frame.
-</PHASE_FSM>
-</GAME>
+<COMPLETENESS>
+* At least 3 maps, each 10+ waves, final wave includes a boss.
+* 4 tower kinds (single-target burst, AoE, slow, support) + 3+ upgrade levels each.
+* Between-wave shop/upgrade; explicit gold-shortage UI.
+* Speed multipliers 1x/2x/4x work.
+* `pnpm lint` passes; `pnpm dev` full flow has no console errors.
+* Dark mode UI stays readable; HUD readable on bright backgrounds too (consider a stroke or semi-transparent background).
+</COMPLETENESS>
+</TOWER_DEFENSE_REACT>

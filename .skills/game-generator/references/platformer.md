@@ -1,155 +1,151 @@
-<GAME>
-* When user requests to generate platformer, side-scrolling, endless runner, or action platformer games:
-* **Entrypoint — CRITICAL**: `index.html` always loads `src/main.tsx` (React root) — NEVER modify it. Initialize `Phaser.Game` inside `src/App.tsx` via `useEffect` with `initialized.current` guard. Game scenes and logic go under `src/game/`.
-* **`index.html` body** — `src/index.css` already sets `overflow:hidden` and Tailwind Preflight zeroes body margin; do NOT add duplicate inline styles to `index.html`.
-* **FORBIDDEN packages** (available in package.json but must NOT be used for 2D games): `pixi.js` (use Phaser 3), `framer-motion` / `gsap` (use Phaser Tween system), standalone `import 'matter-js'` (use Phaser's built-in `physics: { default: 'matter' }`).
-* Make full use of assets in manifest.json. Follow `<MANIFEST_FIRST>` rules from base prompt.
+<PLATFORMER_SHOOTER_REACT>
+# 平台跳跃/跑酷/俯视角；重力弹射 → projectile.md，球场 → ball.md。
 
-<FRAMEWORK_SELECTION>
-This is a platformer game — ALWAYS use Phaser 3.
-**FORBIDDEN** — never implement 2D games with pure React (`useState` + `setInterval` game loop).
-</FRAMEWORK_SELECTION>
+Use for: side-scrolling platformer / endless runner / top-down movement.
+`<canvas>` + rAF; React = menu/HUD/results. **Gravity arcs / artillery /
+slingshot** → [projectile.md](projectile.md). **Court sports / pinball** →
+[ball.md](ball.md).
 
-<PLATFORMER_SPECIFIC_DESIGN>
-* **JUMP FEEL — CRITICAL FOR PLATFORMERS**:
-  - **Variable-height jump**: Hold = higher (multiply velocity by 0.5 on release if moving up)
-  - **Coyote time**: 100ms grace period after leaving edge where jump still works
-  - **Jump buffering**: Register jump input 80ms before landing and execute on touch
-  - **Fast-fall option**: Press down while airborne to fall faster
-  - **Landing animation**: Brief squash on land (scale tween) for juice
+<PACKAGE_SELECTION>
+* No synchronized `platformer-*` / `kinematic2d-*` in this trim. Movement,
+  cameras, and solid collision are **app-owned** on Canvas.
+* Continuous non-gravity bullets: keep **app-owned**, or only if explicitly
+  required use `shooter-core` (document rejection of `ballistics-core`).
+* Optional HUD: `score-core` + `score-react`.
+</PACKAGE_SELECTION>
 
-* **CAMERA — CRITICAL**:
-  - Use `startFollow(player, true, 0.1, 0.1)` with lerp for smooth movement
-  - Add camera lead-ahead: `camera.followOffset.x = player.velocityX * 0.1` to show more space ahead
-  - Set camera deadzone: `camera.setDeadzone(100, 50)` to reduce jitter
-  - Always set camera bounds: `camera.setBounds(0, 0, levelWidth, levelHeight)`
+<STAGE_BASICS>
+* Single canvas, logical resolution 960×540 (horizontal platformer / top-down) or 540×960 (vertical shooter / runner).
+* HUD lives in absolutely positioned React components layered over the canvas.
+* Main loop follows the rAF skeleton in `brick_breaker.md`: dt in seconds, `Math.min(32ms, ...)`.
+</STAGE_BASICS>
 
-* **LEVEL READABILITY**:
-  - Color coding: platforms (neutral/brown), hazards (red/orange), collectibles (yellow/gold), interactive (blue/purple)
-
-* Landscape orientation (800x600 or 1280x720). Gravity: 600-1200 (higher = snappier).
-</PLATFORMER_SPECIFIC_DESIGN>
-
-<CONSTANTS_FILE>
-```typescript
-// src/game/constants.ts — Platformer tuning
-export const PLAYER_SPEED = 250; export const JUMP_VELOCITY = -450;
-export const GRAVITY = 800; export const MAX_FALL_SPEED = 600;
-export const COYOTE_TIME = 100; export const JUMP_BUFFER = 80;
-export const ENEMY_SPEED = 80; export const TILE_SIZE = 32;
+<STATE_SHAPE>
+```ts
+type Kind = "player" | "enemy" | "bullet" | "pickup" | "platform";
+interface Entity { id: string; kind: Kind; x: number; y: number; vx: number; vy: number; w: number; h: number; alive: boolean; extra?: any; }
 ```
-</CONSTANTS_FILE>
+* `entitiesRef.current: Entity[]`; each frame's update iterates alive entities.
+* React state only holds `score`, `lives`, `wave`, `phase`.
+* **Never** sync entities into React state every frame.
 
-<PHYSICS_PATTERNS>
-* **COLLISION BODY — fixed-ratio sizing**: the Arcade body is NOT a guessed pixel value and NOT the full frame. It is a **fixed fraction of the visible sprite**, sized in DISPLAY px, then converted to NATIVE frame px (because `setSize`/`setOffset` use native frame px and do NOT scale with `setScale`/`setDisplaySize`). Start from the SMALLEST sensible body — a slightly-too-small body costs nothing in a platformer (jumps feel generous) while a too-large body makes obstacles uncrossable (the recurring cat-vs-car failure).
-  ```typescript
-  // Fixed default ratios (display fraction of the sprite). Start as small as is playable.
-  const PLAYER_BODY = { w: 0.4, h: 0.6 };    // player: narrow → forgiving jumps
-  const OBSTACLE_BODY = { w: 0.45, h: 0.5 }; // jumpable ground obstacle: narrow is the point
+<PLATFORMER_PHYSICS>
+* **Gravity**: `vy += GRAVITY * dt`; GRAVITY ≈ 1500 px/s², `MAX_FALL = 900 px/s`.
+* **Jump**: on ground contact + Space → `vy = -JUMP_V` (e.g. -520). Support double-jump and variable-height jump (releasing Space early → `vy = max(vy, -JUMP_V*0.4)`).
+* **AABB collision, resolved per axis**:
+  1. `x += vx*dt`; check horizontal overlap vs platforms/walls; on hit, snap back to the contact edge.
+  2. `y += vy*dt`; check vertical overlap: contact from above → landed, `onGround=true, vy=0`; from below → head bump, `vy=0`.
+* **One-way platforms**: only collide when `vy > 0 && prevBottom <= platTop` — lets the player pass through from below.
+* **Coyote time**: after leaving the ground, allow jumping for another 100ms; `jumpBuffer` 150ms lets a jump press queue slightly before landing. Feel-difference is noticeable.
+* **Friction / accel-decel**: ground `vx *= 0.85` per frame is coarse — use an exponential decay `vx *= Math.exp(-6*dt)`. Air deceleration is slower.
+* **Never** pull in `matter-js` / `phaser physics`: this skill sticks to hand-written AABB.
+</PLATFORMER_PHYSICS>
 
-  // `scale` is the value passed to setScale(), derived from a gameplay target:
-  //   const TARGET_H = GAME_HEIGHT * 0.10; const scale = TARGET_H / sprite.height; // player ≈ 8–12% of screen
-  // Convert display-fraction → native px, center horizontally, align to bottom (feet on ground):
-  function sizeBody(sprite, ratio, scale, frameW, frameH) {
-    const bodyW = (sprite.displayWidth  * ratio.w) / scale;   // native px
-    const bodyH = (sprite.displayHeight * ratio.h) / scale;
-    sprite.body.setSize(bodyW, bodyH);
-    sprite.body.setOffset((frameW - bodyW) / 2, frameH - bodyH);  // centered, bottom-aligned
-  }
+<LEVEL_BOUNDS_GHOST_WALL>
+
+* **Cause**: physics / camera / bullet cull use `CANVAS_W` (e.g. 960) while the
+  tile map is `COLS * TILE` (or a second invisible rim is added on top of tiles).
+* **Fix**: one size only — `LEVEL_W = COLS * TILE`, `LEVEL_H = ROWS * TILE`.
+  Map build, collision, entity clamp, bullet recycle, and camera max all derive
+  from `LEVEL_*`. Set `CANVAS_*` as view size only (may equal `LEVEL_*`).
+* **Check**: walk the perimeter; collision edges must match the last solid tile.
+</LEVEL_BOUNDS_GHOST_WALL>
+
+<TOP_DOWN_SHOOTER>
+* No gravity. WASD / arrows map to `dx,dy`; when `|dx|+|dy|=2`, normalize diagonals with `* 0.707`.
+* Player fire rate: `if (time - lastFire > FIRE_RATE) spawnBullet();`.
+* Aim: convert mouse to world coordinates (remember to divide by dpr / CSS scale). `angle = atan2(my-py, mx-px)`; bullet velocity = `cos(angle)*BULLET_SPEED, sin(angle)*BULLET_SPEED`.
+* Enemy AI: three archetypes — chaser / shooter / patrol. Recompute the target every 300ms instead of every frame.
+</TOP_DOWN_SHOOTER>
+
+<ENDLESS_RUNNER>
+* Player x is fixed; the world scrolls left `scroll += SCROLL_SPEED * dt`. Difficulty ramp: `SCROLL_SPEED += 0.5 * dt`.
+* Obstacle spawner: every `spawnGap` seconds, pick a type (low / high / air) and place it just off the right edge.
+* Distance score: `score = Math.floor(distance / 10)`; celebrate every 1000 as a milestone in UI.
+* Pickups (coins): AABB collision picks up, `score += coin.value`.
+</ENDLESS_RUNNER>
+
+<BULLET_HELL>
+* **Pattern library**, 6 common patterns:
+  1. Ring: `angle = i / N * 2π + baseAngle`.
+  2. Spiral: each tick, `baseAngle += 15°`.
+  3. Aimed: `Math.atan2(py-ey, px-ex)`.
+  4. Telegraphed: draw a red warning line for 500ms → then fire.
+  5. Radial burst: on boss death, 24 bullets evenly spaced.
+  6. Homing: each frame nudge angle toward the player.
+* **Bullet pool**: preallocated `Bullet[] length=500` reused via an `alive` flag. Never `push/splice` per frame.
+* **Out-of-bounds must recycle**: `if (b.x < -50 || b.x > W+50 || b.y > H+50) b.alive = false`. Forgetting this drains the pool and bullets stop spawning while the player wonders why nothing fires.
+* **Hitbox**: the player's hitbox is much smaller than the sprite (e.g. 8×8) — feels much fairer, no "grazing death".
+</BULLET_HELL>
+
+<COLLISION_CULLING>
+* With many enemies/bullets, naive O(n²) drops frames. Spatial hash:
+  ```ts
+  const cell = 64;
+  const key = (x,y) => `${Math.floor(x/cell)}:${Math.floor(y/cell)}`;
   ```
-  - Pickups / coins may go slightly LARGER (`0.8–1.0`) so they're easy to collect; player & jumpable obstacles stay at the minimal ratios above.
-  - If a body still feels wrong, set Arcade `{ debug: true }` to SEE the boxes and adjust the ratio — never blind-guess pixel numbers. Disable debug before shipping.
-  - Sprite assets often have transparent padding — bottom-aligning the body (above) puts feet on the ground regardless of padding.
+  Rebuild each frame; query the 3×3 neighborhood. Bullets vs enemies at 1000+ still holds 60fps.
+* Alternatively, split on-screen vs off-screen — offscreen entities only update position and skip collision checks.
+</COLLISION_CULLING>
 
-* **PLAYER SETUP**:
-  ```typescript
-  this.player.setCollideWorldBounds(true); // keep on screen
-  this.player.setBounce(0); // no bounce for tight control
-  (this.player.body as Phaser.Physics.Arcade.Body).setMaxVelocityY(MAX_FALL_SPEED);
-  ```
+<CAMERA>
+* Platformers usually use "follow with look-ahead": `cam.x = lerp(cam.x, player.x - W/2 + player.vx*0.3, dt*4)`.
+* Bounded level: `cam.x = clamp(cam.x, 0, levelWidth - W)`.
+* Before drawing, subtract `cam.x/cam.y` from each entity's position; HUD is unaffected.
+</CAMERA>
 
-* **MOVEMENT PATTERN**:
-  ```typescript
-  update() {
-    const body = this.player.body as Phaser.Physics.Arcade.Body;
-    // Horizontal
-    if (this.cursors.left.isDown) this.player.setVelocityX(-PLAYER_SPEED);
-    else if (this.cursors.right.isDown) this.player.setVelocityX(PLAYER_SPEED);
-    else this.player.setVelocityX(0);
-    // Ground check: BOTH touching.down AND blocked.down
-    const isGrounded = body.touching.down || body.blocked.down;
-    if (isGrounded) this.lastGroundedTime = this.time.now;
-    // Jump with coyote time
-    if (this.jumpPressed && (isGrounded || this.time.now - this.lastGroundedTime < COYOTE_TIME)) {
-      this.player.setVelocityY(JUMP_VELOCITY); this.jumpPressed = false;
-    }
-    // Variable jump: release early = lower
-    if (this.jumpReleased && body.velocity.y < 0) body.setVelocityY(body.velocity.y * 0.5);
-  }
-  ```
+<INPUT>
+* **Keyboard**: `useRef<Record<string,boolean>>({})` holds key states; `useEffect` binds keydown/up. `preventDefault` on arrows, space, and WASD.
+* **Mouse**: shooters use `onPointerDown/Move/Up` on the canvas. When mapping to world coordinates, factor in `rect.left`, dpr, and CSS scale.
+* **Gamepad** (optional): read `navigator.getGamepads()` each frame; map axes and buttons like the keyboard.
+* **Mobile**: shooters and platformers need a virtual joystick or tap zones. Left half = joystick, right half = jump/fire. Don't rely on keyboard.
+</INPUT>
 
-* **MOVING PLATFORMS — CRITICAL**:
-  ```typescript
-  // Tween: this.tweens.add({ targets: platform, x: endX, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-  // Platform MUST have: body.setImmovable(true) AND body.setAllowGravity(false)
-  // Anti-slip: (platform.body as Phaser.Physics.Arcade.Body).setFriction(1, 0)
-  // VERTICAL PLATFORMS: collide from top only — check player.y < platform.y in callback
-  // FALLING PLATFORMS: delay 300ms, disable body, tween alpha down, destroy
-  ```
+<SPAWN_AND_WAVE>
+* Wave FSM mirrors `tower_defense.md`: `prep -> spawning -> clearing -> over`.
+* Endless mode: `enemyHp *= 1.05^wave`, `spawnGap *= 0.95^wave`; cap both to avoid runaway scaling.
+* Boss: dedicated entity type with multi-phase HP — 60% / 30% / 10% switches attack pattern via a `phase: 1|2|3` field.
+</SPAWN_AND_WAVE>
 
-* **ENEMY PATROL**:
-  ```typescript
-  // Simple back-and-forth
-  if (this.enemy.x <= patrolStart) this.enemy.setVelocityX(ENEMY_SPEED);
-  if (this.enemy.x >= patrolEnd) this.enemy.setVelocityX(-ENEMY_SPEED);
-  // Kill by jumping on top: check player.body.velocity.y > 0 && player.y < enemy.y in overlap
-  ```
+<SPRITES>
+* Use `HTMLImageElement` for sprites. Preload with `Promise.all(paths.map(p => loadImage(p)))` before entering `playing`.
+* Sprite atlas record: `{ img, sx, sy, sw, sh }`. Draw with `ctx.drawImage(img, sx, sy, sw, sh, x-sw/2, y-sh/2, sw, sh)`.
+* Frame animation: `frame = Math.floor(time / 100) % totalFrames`, look up `frames[frame]`.
+* Facing: `ctx.save(); ctx.scale(dir, 1); ctx.drawImage(...); ctx.restore()`, or keep a pre-flipped copy.
+</SPRITES>
 
-* **WORLD BOUNDS & DEATH**:
-  - `setCollideWorldBounds(true)` on PLAYER blocks bottom — use death threshold ABOVE bottom: `if (player.y > HEIGHT - 50) die()`
-  - NEVER use `setCollideWorldBounds(true)` on enemies in pit levels — destroy in update(): `if (enemy.y > HEIGHT + 100) enemy.destroy()`
-</PHYSICS_PATTERNS>
-
-<MOBILE_CONTROLS>
-```javascript
-const isMobile = !this.game.device.os.desktop;
-if (isMobile) {
-  const width = this.game.config.width as number;
-  const height = this.game.config.height as number;
-  // Left/Right buttons
-  this.add.rectangle(width * 0.1, height * 0.9, 80, 80, 0x333333, 0.5)
-    .setInteractive().on('pointerdown', () => { this.mobileLeft = true })
-    .on('pointerup', () => { this.mobileLeft = false });
-  this.add.rectangle(width * 0.25, height * 0.9, 80, 80, 0x333333, 0.5)
-    .setInteractive().on('pointerdown', () => { this.mobileRight = true })
-    .on('pointerup', () => { this.mobileRight = false });
-  // Jump button
-  this.add.circle(width * 0.85, height * 0.85, 50, 0xff0000, 0.6)
-    .setInteractive().on('pointerdown', () => { this.jumpPressed = true });
-}
-```
-</MOBILE_CONTROLS>
+<REACT_OVERLAY>
+* HUD (score, lives, ammo, boss HP): `absolute`-positioned React components. Use `setScore` etc. to trigger redraw.
+* Pause menu: Esc opens a shadcn `Dialog`. The main loop pauses whenever `phase !== "playing"`.
+* Result: `Dialog` shows time, score, rank; "Retry" / "Menu".
+* Touch virtual controls: `<div className="touch-none absolute ...">` — press updates a ref, release clears it.
+</REACT_OVERLAY>
 
 <AUDIO>
-- Jump sound on jump, landing thud on ground contact, coin chime on collect, death jingle on game over
-- Use Phaser built-in audio. Trigger only after first interaction (autoplay policy).
+* Pool short SFX (fire, hit, jump, pickup).
+* BGM is a separate `<audio loop />`; pause on pause, play on resume.
+* Unlock the AudioContext on the first user gesture.
 </AUDIO>
 
-<ZUSTAND_RULES>
-All-Phaser UI is the default — manage all state inside scenes, no Zustand needed. Only add Zustand if React components outside the canvas must reflect game state (see SKILL.md shared rules).
-</ZUSTAND_RULES>
+<PITFALLS>
+* **setState per frame — CRITICAL**: as above; all realtime data goes in refs.
+* **dt unit confusion**: milliseconds vs seconds must be consistent. GRAVITY constants and dt must share a unit.
+* **Large dt tunnels after tab return**: `Math.min(32ms, ...)`; after visibility change, reset `lastRef = performance.now()`.
+* **Bullets not recycled**: see bullet-hell rules.
+* **Wrong AABB axis order**: y-first-then-x misses "sliding along a wall"; x-first-then-y is fine but you must check both. Pick one convention and keep it.
+* **Sticky-jump input**: without coyote time / jump buffer, players complain "I pressed jump but nothing happened." Implement both.
+* **Canvas coordinate offset**: dpr and CSS scale cause mouse clicks to mismatch. Encapsulate the conversion in a `pageToWorld(e)` helper.
+* **No difficulty cap**: endless mode drifts into unplayable. Clamp the key parameters with min/max.
+* **Mobile canvas full-screen without touch lock**: swipes scroll the whole page. Add `touch-action: none` on the canvas and its parent.
+* **Ghost wall**: physics width ≠ level width → unify on `LEVEL_W = COLS * TILE`
+  (see `<LEVEL_BOUNDS_GHOST_WALL>`).
+</PITFALLS>
 
-<SCENE_LIFECYCLE>
-* **`shutdown()` must be a class method** — `this.events.once('shutdown', ...)` does not fire on `scene.destroy()`, leaking listeners permanently. In `shutdown()`: call `this.time.removeAllEvents()`, mirror every `EventBus.on` with `EventBus.off`, and `group.destroy(true)`.
-* **Reset game state on scene restart** — reinitialize all scene-local variables at the top of `init()` or `create()`, not only in the game-over handler (player may restart mid-session).
-* **Keep state inside the scene** — all game state (score, lives, player stats) lives as scene-local properties; React's role is only to host the canvas container.
-* **`setDisplaySize` / `setScale` do not sync the physics body** — always follow with explicit `body.setSize(w, h, false)` and `body.setOffset(x, y)` using fixed logical pixel values, never `sprite.width/height` (those still reflect original texture size after scaling).
-* **Sprite assets often have transparent padding — offset to content bounds, not image bounds** — body bottom must align to the actual opaque pixel bottom of the asset, not the image edge. Formula: `offset_y = content_bottom_row + 1 - BODY_H`; `spawnY` so that `body_bottom = groundY`. Using image dimensions directly causes the character and obstacles to float above the ground on different levels.
-* **Player hurt state must have an explicit exit transition** — set a `hurtTimer`; only restore to `idle`/`run` after it expires. Without an exit, the hurt animation locks forever and the player cannot move again.
-* **Lethal obstacles use `overlap`, not `collider`** — `collider` applies physics impulse and pushes the player on top of the obstacle (game-over callback never fires); `overlap` only triggers the callback: `this.physics.add.overlap(player, obstacles, onHit, undefined, this)`.
-* **Canvas container z-index** — never give `#game-container` a negative `z-index` to push it behind React elements; the canvas becomes invisible. Stack React overlays above the canvas with `position:absolute; z-index:10` instead, and use `pointer-events-none` on the overlay container.
-* **`setCollideWorldBounds(true)` bounces on all four sides including the bottom** — for objects that should fall off-screen, check `y > HEIGHT + 50` in `update()` and destroy instead.
-* **Timer / collider / group ownership** — enemies, pickups, and coins created dynamically must be cleaned up in `shutdown()` via `world.removeCollider(c)` and `group.destroy(true)`; rebuilding without clearing first causes old callbacks (damage, score) to fire repeatedly.
-* **Tween visibility / input — CRITICAL** — `alpha=0` or `setVisible(false)` makes an object invisible but does NOT remove its input hit-area; pointer events still fire on transparent objects, silently intercepting taps intended for elements beneath. Always call `disableInteractive()` when hiding and `setInteractive()` when showing again.
-</SCENE_LIFECYCLE>
-</GAME>
+<COMPLETENESS>
+* At least 3 levels / 5 waves, including 1 boss.
+* All 5 screens reachable: main menu, play, pause, result, tutorial.
+* Persist completion + best score in localStorage.
+* Support keyboard, mouse, and touch inputs.
+* Dark / light color contrast is readable; `pnpm lint` passes.
+</COMPLETENESS>
+</PLATFORMER_SHOOTER_REACT>

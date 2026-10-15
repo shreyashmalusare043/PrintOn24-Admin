@@ -1,155 +1,167 @@
-<GAME>
-* **Entrypoint — CRITICAL**: `index.html` always loads `src/main.tsx` (React root) — NEVER modify it. Initialize `Phaser.Game` inside `src/App.tsx` via `useEffect` with `initialized.current` guard. Game scenes and logic go under `src/game/`.
-* **`index.html` body** — `src/index.css` already sets `overflow:hidden` and Tailwind Preflight zeroes body margin; do NOT add duplicate inline styles to `index.html`.
-* **FORBIDDEN packages** (available in package.json but must NOT be used for 2D games): `pixi.js` (use Phaser 3), `framer-motion` / `gsap` (use Phaser Tween system), standalone `import 'matter-js'` (use Phaser's built-in `physics: { default: 'matter' }`).
-* ALWAYS use Phaser 3 (+ rot-js for roguelikes). NEVER pure React game loop.
-* Make full use of assets in manifest.json. Square orientation (800×800). Gravity: 0.
+<GRID_LOGIC_REACT>
+# 网格逻辑谜题/棋类 UI；麻将与纸牌命名局 → card.md。
 
-<GAME_TYPE_SELECTOR>
-- Roguelike / Dungeon Crawler → `<ROGUELIKE_PATTERNS>` + `<GRID_MOVEMENT>`
-- Sokoban / Push-puzzle → `<SOKOBAN_PATTERNS>` + `<GRID_MOVEMENT>`
-- Minesweeper → `<MINESWEEPER_PATTERNS>`
-- Tetris → `<TETRIS_PATTERNS>`
-- Match-3 / Bejeweled → `<MATCH3_PATTERNS>`
-- 2048 / Slide-merge → `<SLIDE_MERGE_PATTERNS>`
-- Gomoku / Reversi / Board game → `<BOARD_GAME_PATTERNS>`
-- Whack-a-mole → `<WHACK_PATTERNS>`
-- Jigsaw puzzle → `<JIGSAW_PATTERNS>`
-- Mahjong solitaire → `<MAHJONG_PATTERNS>`
-</GAME_TYPE_SELECTOR>
+Use for: 2048 / Minesweeper / Snake / Tetris / Sokoban / Memory / Whack-a-mole /
+Jigsaw / Gomoku / Reversi / Maze / perfect-info board UIs. **Mahjong and named
+card games** → [card.md](card.md).
 
-<CONSTANTS_FILE>
-```typescript
-export const TILE_SIZE = 48; export const GRID_W = 16; export const GRID_H = 16;
-export const LOCK_DELAY = 500;  // Tetris ms
-export const BOARD_COLS = 10;   export const BOARD_ROWS = 20; // Tetris
-export const MINE_COUNT = 40;   export const GRID_SIZE_2048 = 4;
-export const MATCH_MIN = 3;     export const SCORE_PER_TILE = 10; export const COMBO_MULTI = 1.5;
-```
-</CONSTANTS_FILE>
+<PACKAGE_SELECTION>
+Published names use the `miaoda-game-` prefix. Only these packages:
 
-<GRID_MOVEMENT>
-**MANDATORY for roguelike/sokoban** — NEVER use `setVelocity` for grid-aligned entities.
-```typescript
-tryMove(dx, dy) {
-  if (this.isMoving) return;
-  const nx = this.player.gridX + dx, ny = this.player.gridY + dy;
-  if (this.map[ny][nx] === WALL) return;
-  this.isMoving = true; this.player.gridX = nx; this.player.gridY = ny;
-  this.tweens.add({ targets: this.player, x: nx*TILE_SIZE+TILE_SIZE/2, y: ny*TILE_SIZE+TILE_SIZE/2,
-    duration: 150, ease: 'Sine.inOut', onComplete: () => { this.isMoving=false; this.onMoveComplete(); } });
+| Need | Start with | Optional |
+| --- | --- | --- |
+| Typed grid, selection, path preview | `grid-core` + `grid-react` | |
+| Alternating / phase turns | `turn-core` + `turn-react` | |
+| Two-side perfect-info search | `decision-search-core` | `decision-score-core` |
+| Undo / replay | `command-core` + `command-react` | |
+| Score HUD | `score-core` + `score-react` | |
+
+No `match3-*`, `fallblock-*`, or `sokoban-*` in this synchronized trim — those
+puzzles stay **app-owned** on the grid. Do not pull card `*-rules` unless the
+product is actually that named game (then use card.md).
+</PACKAGE_SELECTION>
+
+<RENDER_MODEL>
+* **Default to React DOM + CSS Grid**:
+  ```tsx
+  <div className={`grid grid-cols-${cols} gap-1`}>
+    {board.flat().map(cell => <Cell key={cell.id} data={cell} />)}
+  </div>
+  ```
+  Up to ~400 cells (20×20) is comfortably fast. Switch to `<canvas>` at ≥1000 cells, or when you need scrolling / fog of war.
+* **Data / rendering are strictly separated — CRITICAL**: `board: Cell[][]` is the single source of truth. All win / legal-move / merge checks read from data, never from DOM positions.
+* **Stable ids**: give every Cell/Tile a stable `id = uuid` (or an incrementing counter) at creation time. Use id as React key — not row/column coordinates. Merges and swaps must preserve id so animations stay coherent.
+</RENDER_MODEL>
+
+<STATE_SHAPE>
+```ts
+type Phase = "menu" | "playing" | "paused" | "over" | "victory";
+interface GameState {
+  phase: Phase;
+  board: Cell[][];        // or flat Cell[] + width
+  score: number;
+  best: number;           // loaded from localStorage
+  moves: number;
+  seed: number;           // for replays / sharing
 }
 ```
-Store `{gridX,gridY}`; convert to world with `gridX * TILE_SIZE + TILE_SIZE/2`. Collision via array lookup, NOT physics.
-Add `keyboard.addCapture('UP,DOWN,LEFT,RIGHT,SPACE')` to prevent browser scroll.
-</GRID_MOVEMENT>
+* Use `useReducer` for the main state. One-way flow: `ArrowKey -> ACTION -> newBoard -> render`.
+* `bestScore` uses `useLocalStorage("game:<name>:best", 0)`. On game over, `setBest(Math.max(best, score))`.
+</STATE_SHAPE>
 
-<ROGUELIKE_PATTERNS>
-* **Map gen**: `new ROT.Map.Digger(w,h)`; `map.create((x,y,v)=>{ mapData[y][x]=v; })`. After gen, BFS-validate exit is reachable; regenerate if not.
-* **Pathfinding**: cache A* path (`new ROT.Path.AStar`), recompute only when player moves. NEVER run every frame.
-* **FOV**: `new ROT.FOV.PreciseShadowcasting`; recompute only on player move; store visible set.
-* **Turn system**: player moves → `processEnemyTurns()` → `updateFOV()`.
-</ROGUELIKE_PATTERNS>
+<INPUT>
+* **Keyboard**:
+  ```ts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
+        e.preventDefault();
+        dispatch({ type: "INPUT", key: e.key });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  ```
+  `preventDefault` is required, otherwise space and arrows scroll the page.
+* **Touch swipe**: add `touch-action: none` to the container. Track `startX/Y` on `onPointerDown`, compute `dx/dy` on `onPointerUp`, threshold 20px, `|dx|>|dy|` means horizontal.
+* **Click / drag**: use React synthetic events (`onPointerDown/Move/Up`) — do not mix with native listeners.
+</INPUT>
 
-<SOKOBAN_PATTERNS>
-* **Push**: when moving into box cell, check cell-behind-box — if wall or another box, block move. Move box + player together via twin tweens.
-* **Win**: `boxes.every(b => isTarget(b.gridX, b.gridY))`.
-* **Undo**: before each move push `{playerX,playerY, boxes:[{x,y}...]}` snapshot. Pop on undo and restore positions instantly (no tween).
-</SOKOBAN_PATTERNS>
+<TICK_LOOP>
+* Fixed-tick games like Snake / Tetris: `useEffect` with `setInterval(() => dispatch({type:"TICK"}), TICK_MS)`. On difficulty bump, clear the old interval and start a new one.
+* **Pausing must really pause**: clear the interval when `phase !== "playing"`. Also pause on `document.visibilitychange` → hidden.
+* **No recursive `setTimeout`**: coming back from another tab you get multiple chains stacked up and the logical framerate doubles.
+</TICK_LOOP>
 
-<MINESWEEPER_PATTERNS>
-* **Safe first click**: place mines AFTER first click, protecting a 3×3 area around clicked cell.
-* **Numbers**: for each non-mine cell count mines in 8 neighbors.
-* **Flood fill reveal**: if `adjacentMines===0`, recursively reveal 8 neighbors (BFS to avoid stack overflow).
-* **Flag**: right-click or long-press (500ms `delayedCall`) to toggle.
-</MINESWEEPER_PATTERNS>
+<GAME_RULES>
 
-<TETRIS_PATTERNS>
-* **Pieces**: store as rotation array of shape matrices, e.g. I has 2 rotations `[[[1,1,1,1]], [[1],[1],[1],[1]]]`.
-* **Collision check**: `shape.every((row,dy)=>row.every((c,dx)=>!c||isValid(piece.x+dx+ox, piece.y+dy+oy)))`.
-* **Wall kick**: try offsets `[0,0],[1,0],[-1,0],[0,-1],[2,0],[-2,0]` in order on rotation fail.
-* **Lock delay**: `delayedCall(LOCK_DELAY, lockPiece)`. Reset on each player move (max 15 resets).
-* **Line clear scoring**: `[0,100,300,500,800][linesCleared] * level`. Splice row from board array, unshift empty row.
-* **Ghost piece**: drop `currentPiece` down until collision, render at ghost Y with low alpha.
-</TETRIS_PATTERNS>
+## 2048
+* Normalize every input as "slide left": rotate toward that direction → slide-merge each row → rotate back.
+* Merge rule: `[2,2,4]` -> `[4,4]`; a tile can only merge once per move — track with a `merged: boolean` flag.
+* After each move, insert `2` (90%) or `4` (10%) into a random empty cell. No empty cell and no mergeable pair → `phase = "over"`.
+* Victory: reaching `2048` → `phase = "victory"`. Player may continue.
 
-<MATCH3_PATTERNS>
-* **Swap**: tween both tiles simultaneously; if no match after swap, tween back.
-* **Find matches**: scan all rows then columns for 3+ same-type runs; return set of `{x,y}`.
-* **Cascade**: `while(hasMatches){ remove→applyGravity(await tween)→fillEmpty(await tween)→rescan }`. Track `combo++` per loop iteration for multiplier.
-* **Input**: `pointerdown` records start; `pointerup` — drag dist < 10px = tap/select, else determine direction and swap.
-</MATCH3_PATTERNS>
+## Snake
+* `snake: {x,y}[]`, `dir: "U"|"D"|"L"|"R"`, `pendingDir` buffers the next direction to prevent 180° reversals.
+* Each tick: newHead = oldHead + dir. If food is eaten, don't pop the tail; otherwise pop.
+* Self-collision: `snake.slice(1).some(s => s.x===head.x && s.y===head.y)`.
+* Walls: instant death, or wrap-around depending on difficulty.
 
-<SLIDE_MERGE_PATTERNS>
-* **Normalize to "slide left"**: rotate board `n` times before sliding, rotate back after. `rotations={left:0,right:2,up:3,down:1}`.
-* **Slide row**: filter zeros out, merge adjacent equals (each cell merges once), pad zeros to right.
-* **Win**: `board.flat().includes(2048)`. **Lose**: board full AND no adjacent equal pairs.
-* **Animate**: scale-pop tween on merged/new tiles.
-</SLIDE_MERGE_PATTERNS>
+## Tetris
+* 7 pieces `I,O,T,S,Z,J,L`, each with 4 rotation states stored as coordinate arrays.
+* Wall kick: if rotation collides, try ±1/±2 column offsets.
+* Lock delay 500ms: after landing, the piece can still shift left/right briefly before locking.
+* Line clear: scan from the bottom up, score by lines cleared (1/3/5/8 tiers); a short tween on the drop feels much better.
+* Ghost piece: project the current piece down until it collides, render one row above at half opacity.
 
-<BOARD_GAME_PATTERNS>
-* **Gomoku win**: check 4 directions from last placed stone; count consecutive same-color in both sides; win if total ≥ 5.
-* **Reversi flip**: for each of 8 dirs, walk until own color found; all opponent pieces in between are flipped.
-* **AI turn**: `time.delayedCall(300, aiMove)` for UX breathing room.
-</BOARD_GAME_PATTERNS>
+## Minesweeper
+* **First-click safety**: place mines AFTER the first click, guaranteeing the clicked cell and its 3×3 neighbors are mine-free.
+* Numbers: mine count in the 8 neighbors. On a `0` cell, BFS flood-open all connected zeros and their border cells.
+* Flagging: right-click / long-press toggles the flag. Disable the browser menu with `onContextMenu={e=>e.preventDefault()}`.
+* Victory: all non-mine cells revealed.
 
-<WHACK_PATTERNS>
-* **Spawn**: `time.addEvent({ delay: spawnInterval, loop:true })`. Each tick: pick random unoccupied hole, pop-up tween (`Back.Out`), auto-hide after `moleVisibleTime`.
-* **Difficulty**: every 10s reduce both `spawnInterval` and `moleVisibleTime` (floor at 300ms / 500ms).
-* **Hit**: `pointerdown` on mole — cancel auto-hide, slide back down tween, emit score delta.
-</WHACK_PATTERNS>
+## Sokoban
+* Three data layers: `walls`, `targets`, `boxes: {x,y}[]`, plus `player: {x,y}`.
+* Move rules: target cell empty → player walks; target cell has a box AND the cell beyond is empty → both move; otherwise reject.
+* Push each move onto `history` for undo.
+* Victory: every box sits on a target.
 
-<JIGSAW_PATTERNS>
-* **Slice**: `RenderTexture.draw(texture, -col*pw, -row*ph)` to crop each piece. Scatter to random positions.
-* **Snap**: on `dragend`, if distance to correct position < threshold, tween to exact position and `disableInteractive()`.
-* **Z-order**: `setDepth(100)` on `dragstart`, restore on `dragend`.
-</JIGSAW_PATTERNS>
+## Memory
+* `cards: {id, pairId, revealed, matched}[]`, `selected: id[]`.
+* Reveal 2 cards: matching `pairId` → `matched=true` stays face-up; otherwise flip back after 800ms.
+* Track moves and time; write best record to localStorage.
 
-<MAHJONG_PATTERNS>
-* **Free tile**: (1) no tile on same layer overlapping it AND (2) not blocked on BOTH left and right.
-* **Match**: same `type` string (flower/season tiles: same category match any). Selected tile highlights; second match removes pair with fade tween.
-* **Wrong match**: shake tween on both tiles, deselect.
-</MAHJONG_PATTERNS>
+## Whack-a-mole
+* Fixed 3×3 or 4×4 holes. Every `spawnMs`, pick a random empty hole to pop up; retract after `visibleMs`.
+* Difficulty ramp: `spawnMs -= 100` every 10s, floor at 300.
+* Hit: `onPointerDown` scores and plays the retract animation.
 
-<MOBILE_CONTROLS>
-```javascript
-if (!this.game.device.os.desktop) {
-  // Roguelike/Sokoban: virtual D-pad (4 rect buttons, min 60px) or swipe detection
-  // Tetris: swipe left/right=move, swipe down=soft drop, tap=rotate
-  // Match-3/Minesweeper: tap-based, no extra controls needed
-  // Jigsaw/Mahjong: drag-based, pointer events handle naturally
-}
-```
-</MOBILE_CONTROLS>
+## Jigsaw
+* At start, cut an `<img>` or canvas into rows*cols pieces: `{id, correctX, correctY, x, y}` per piece.
+* Drag with `onPointerDown/Move/Up`. On release, if within 24px of target, snap and set `matched=true`. Raise the dragged piece's `z-index` while dragging.
+* Victory: all pieces matched.
 
-<AUDIO>
-- Match-3: swap whoosh, match chime, cascade escalation. Tetris: move click, line clear zap, Tetris fanfare.
-- 2048: slide swish, merge pop. Minesweeper: reveal click, flag place, explosion. Mahjong: tile click, shuffle.
-- Trigger only after first interaction (autoplay policy).
-</AUDIO>
+## Mahjong / Onet
+* Tile layout: ensure even count and pairability. Reverse-generate the layout via the elimination process for a guaranteed-solvable start.
+* Mahjong: a tile in a stacked layer is selectable only when BOTH adjacent sides are unblocked. `free(tile) = !leftBlocked && !rightBlocked`.
+* Onet (matching pairs): BFS with at most 2 turns in the path.
 
-<ZUSTAND_RULES>
-All-Phaser UI is the default — manage all state inside scenes, no Zustand needed. Only add Zustand if React components outside the canvas must reflect game state (see SKILL.md shared rules).
+## Board (Gomoku / Reversi)
+* Gomoku: after each stone, scan 4 axes ×2 directions up to 4 steps; win on any line of 5.
+* Reversi: for each move, find flip chains in 8 directions. Skip when no legal move. Game ends when the board is full or both players skip in a row.
+* AI: `setTimeout(() => aiMove(), 400)` fakes a "thinking" beat. MinMax depth 2–3 as a baseline.
 
-If Zustand is used: call `useGameStore()` once at the top of the component and destructure all needed values — never call it inside JSX conditionals or `.map()`. Violating this causes a React hooks order crash.
-</ZUSTAND_RULES>
+## Maze
+* Generate with recursive backtracking or Prim's. Verify solvability with BFS.
+* Player moves in discrete steps; add optional fog-of-war based on view radius.
+</GAME_RULES>
 
-<SCENE_LIFECYCLE>
-* **NEVER register event listeners inside `update()`** — `update()` runs every frame; each `this.input.keyboard.on(...)` call stacks a new listener. After N frames, every keypress fires N callbacks. Register once in `create()`, remove in `shutdown()`.
-* **Input locking for sequential games** (跳一跳, charge-and-release, turn-based): set `this.inputLocked = true` when an action begins; set `false` only after the action fully resolves (landing, animation complete). Guard ALL input handlers with `if (this.inputLocked) return`. Reset in `init()`.
-* **Stone/piece size constraint**: `STONE_RADIUS` must satisfy `2 * STONE_RADIUS < CELL_SIZE * 0.9`. Derive `CELL_SIZE` from canvas size: `Math.floor(Math.min(W, H) / (GRID_SIZE + 1))`. Adjacent pieces must never overlap.
-* **Save state completeness**: serialize ALL mutable state — position, HP, inventory, key/switch states, floor index. A save that omits any of these makes the restored session unwinnable.
-* **`shutdown()` must be a class method** — call `this.time.removeAllEvents()`, mirror every `EventBus.on` with `EventBus.off`, and `this.tweens.killAll()`.
-* **Reset game state on scene restart** — reinitialize all scene-local variables at the top of `init()` or `create()`, not only in the game-over handler.
-* **Keep state inside the scene** — grid arrays, entity positions, and all counters live as scene-local properties; React's role is only to host the canvas container.
-* **Tween visibility / input — CRITICAL** — `alpha=0` or `setVisible(false)` makes an object invisible but does NOT remove its input hit-area; pointer events still fire on transparent objects, silently intercepting taps intended for elements beneath. Always call `disableInteractive()` when hiding and `setInteractive()` when showing again.
-</SCENE_LIFECYCLE>
+<ANIMATION>
+* **CSS transform is the default**: `transform: translate(x, y)` + `transition: transform .12s` — cheap and no layout thrash.
+* 2048 merge pop: a one-shot `class="animate-pop"` keyframe from 0.8 → 1.05 → 1.
+* Match / clear highlight: set `state=matched` → Tailwind highlight class for 200ms → then dispatch `REMOVE_MATCHED` to delete from data. Two steps prevent a visual gap at the moment of removal.
+* No `framer-motion` or `gsap`.
+</ANIMATION>
 
-<DATA_RENDER_SEPARATION>
-**Grid games (Sokoban, 2048, maze, board games, Minesweeper) must strictly separate the data layer from the render layer.**
-* **Data layer** — plain JS arrays/objects hold positions, state, and win conditions; no Phaser object references. All rule checks (valid move, win/loss, collision) query only the data layer.
-* **Render layer** — Phaser sprites and text read from the data layer and call a single `renderFromData()` method to refresh visuals; they do not participate in logic.
-* **Forbidden** — deriving grid positions from sprite `x/y` coordinates for win checks; storing board arrays in Zustand (large object diffs on every state change are expensive).
-* **Level solvability** — hand-authored or procedurally generated maps must be validated with BFS/DFS to confirm the goal is reachable. A single wrong cell value (e.g. a wall cell set to 0) silently makes a level unsolvable.
-</DATA_RENDER_SEPARATION>
-</GAME>
+<A11Y>
+* Every interactive cell has `role="gridcell"` + `aria-label`. The board itself has `role="grid"`.
+* Provide readable descriptions like `aria-label="2"` for number tiles.
+* Visible focus ring: `:focus-visible` with a border for keyboard players.
+</A11Y>
+
+<PITFALLS>
+* **Row/column-based keys**: after a swap or merge, React reuses components by position and animations glitch. Use tile id.
+* **Mutating state during render**: e.g. calling `setPhase` inside JSX after a win check. Move it into `useEffect(() => { if (checkWin(board)) dispatch(...) }, [board])`.
+* **Stale board in closures**: `setInterval` callbacks see the initial snapshot. Use `dispatch` from `useReducer`, or a `useRef` holding the latest reference.
+* **Large dt after tab switch**: grid games have no continuous physics but still need `visibilitychange` pause/resume — otherwise Snake "teleports" a huge distance on resume.
+* **RNG without a seed**: sharing / replay / debugging becomes painful. Use a seedable RNG (e.g. mulberry32) and store the `seed` in state.
+* **Corrupted localStorage**: schema changes crash old saves. Wrap in `try/catch` and add a `version` field.
+</PITFALLS>
+
+<COMPLETENESS>
+* Menu → play → result: all three phases wired. Result shows score, best, "Play again", "Main menu".
+* At least 3 difficulty levels or 3 maps. First launch pops a tutorial dialog.
+* Leaderboards / achievements must be viewable offline from local history — not gated on network.
+</COMPLETENESS>
+</GRID_LOGIC_REACT>
