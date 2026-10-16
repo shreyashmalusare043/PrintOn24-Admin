@@ -17,7 +17,8 @@ interface SecurityPasswordModalProps {
 const typeLabels: Record<SecurityPasswordType, string> = {
   credential_view: 'Shopkeeper Credential View Password',
   settlement_payout: 'Settlement & Payout Security Password',
-  payment_methods: 'Payment Methods Configuration Password'
+  payment_methods: 'Payment Methods Configuration Password',
+  system_security_pin: 'Unified System Security PIN'
 };
 
 export const SecurityPasswordModal: React.FC<SecurityPasswordModalProps> = ({

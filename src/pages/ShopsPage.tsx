@@ -3,6 +3,7 @@ import {
   fetchShops,
   createShopWithCredentials,
   toggleShopStatus,
+  setShopStatus,
   updateShopPaymentConfig,
   updateShopDetails,
   fetchShopkeeperForShop,
@@ -170,16 +171,25 @@ export const ShopsPage: React.FC = () => {
     }
   };
 
-  const handleToggleStatus = async (shop: PrintShop) => {
+  const handleSetStatus = async (shop: PrintShop, newStatus: ShopStatus) => {
     try {
-      const newStatus = await toggleShopStatus(shop.id, shop.status);
+      await setShopStatus(shop.id, newStatus);
       setShops((prev) =>
         prev.map((s) => (s.id === shop.id ? { ...s, status: newStatus, is_open: newStatus === 'active' } : s))
       );
       if (selectedShop?.id === shop.id) {
         setSelectedShop((prev) => (prev ? { ...prev, status: newStatus, is_open: newStatus === 'active' } : null));
       }
-      toast.success(`Shop status changed to ${newStatus}`);
+      toast.success(`Shop "${shop.name}" marked as ${newStatus.toUpperCase()}`);
+    } catch (err: any) {
+      toast.error('Failed to change shop status: ' + (err.message || 'Error'));
+    }
+  };
+
+  const handleToggleStatus = async (shop: PrintShop) => {
+    try {
+      const nextStatus: ShopStatus = shop.status === 'active' ? 'inactive' : 'active';
+      await handleSetStatus(shop, nextStatus);
     } catch (err: any) {
       toast.error('Failed to change shop status');
     }
@@ -197,6 +207,21 @@ export const ShopsPage: React.FC = () => {
       toast.success(`Payment method updated to ${config.toUpperCase()}`);
     } catch (err: any) {
       toast.error('Failed to update payment method');
+    }
+  };
+
+  const handleUpdatePcLimit = async (shopId: string, limit: number) => {
+    try {
+      await updateShopDetails(shopId, { pc_limit: limit });
+      setShops((prev) =>
+        prev.map((s) => (s.id === shopId ? { ...s, pc_limit: limit } : s))
+      );
+      if (selectedShop?.id === shopId) {
+        setSelectedShop((prev) => (prev ? { ...prev, pc_limit: limit } : null));
+      }
+      toast.success(`Terminal PC limit updated to ${limit} PCs`);
+    } catch (err: any) {
+      toast.error('Failed to update PC limit: ' + (err.message || 'Error'));
     }
   };
 
@@ -298,7 +323,8 @@ export const ShopsPage: React.FC = () => {
           statusOptions={[
             { label: 'All Statuses', value: 'all' },
             { label: 'Active Shops', value: 'active' },
-            { label: 'Inactive / Disabled', value: 'inactive' }
+            { label: 'Inactive Shops', value: 'inactive' },
+            { label: 'Disabled Shops', value: 'disabled' }
           ]}
           showPaymentFilter={true}
           paymentOptions={[
@@ -352,16 +378,25 @@ export const ShopsPage: React.FC = () => {
                         <div className="text-[10px] text-muted-foreground truncate max-w-xs">{shop.address}</div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <Badge
-                          variant={shop.status === 'active' ? 'default' : 'secondary'}
-                          className={`text-[10px] capitalize cursor-pointer ${
-                            shop.status === 'active' ? 'bg-emerald-600' : ''
-                          }`}
-                          onClick={() => handleToggleStatus(shop)}
-                          title="Click to toggle status"
+                        <Select
+                          value={shop.status}
+                          onValueChange={(val: ShopStatus) => handleSetStatus(shop, val)}
                         >
-                          {shop.status}
-                        </Badge>
+                          <SelectTrigger className={`h-6 w-24 text-[10px] font-semibold border ${
+                            shop.status === 'active'
+                              ? 'bg-emerald-600/10 text-emerald-600 border-emerald-500/30'
+                              : shop.status === 'disabled'
+                              ? 'bg-destructive/10 text-destructive border-destructive/30'
+                              : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                          }`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                            <SelectItem value="disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         <Badge
@@ -707,12 +742,27 @@ export const ShopsPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <DialogTitle className="font-heading text-lg font-bold flex items-center space-x-2">
                     <span>{selectedShop.name}</span>
-                    <Badge
-                      variant={selectedShop.status === 'active' ? 'default' : 'secondary'}
-                      className={`text-[10px] capitalize ${selectedShop.status === 'active' ? 'bg-emerald-600' : ''}`}
-                    >
-                      {selectedShop.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={selectedShop.status}
+                        onValueChange={(val: ShopStatus) => handleSetStatus(selectedShop, val)}
+                      >
+                        <SelectTrigger className={`h-7 w-28 text-[11px] font-semibold border ${
+                          selectedShop.status === 'active'
+                            ? 'bg-emerald-600/10 text-emerald-600 border-emerald-500/30'
+                            : selectedShop.status === 'disabled'
+                            ? 'bg-destructive/10 text-destructive border-destructive/30'
+                            : 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                        }`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="disabled">Disabled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </DialogTitle>
                 </div>
                 <DialogDescription className="text-xs font-mono">
@@ -839,9 +889,25 @@ export const ShopsPage: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="p-3 bg-muted/40 rounded-lg">
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Terminal PC Limit</span>
-                      <p className="font-bold text-foreground text-sm mt-0.5">{selectedShop.pc_limit || 2} Connected Terminals</p>
+                    <div className="p-3 bg-muted/40 rounded-lg space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Terminal PC Limit</span>
+                        <Badge variant="outline" className="text-[10px] font-mono">{selectedShop.pc_limit || 2} PCs</Badge>
+                      </div>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={20}
+                          defaultValue={selectedShop.pc_limit || 2}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (val > 0) handleUpdatePcLimit(selectedShop.id, val);
+                          }}
+                          className="h-8 text-xs font-mono w-20"
+                        />
+                        <span className="text-[11px] text-muted-foreground">Max concurrent PCs</span>
+                      </div>
                     </div>
                     <div className="p-3 bg-muted/40 rounded-lg">
                       <span className="text-[10px] text-muted-foreground uppercase font-semibold">Settlement Bank</span>

@@ -2,8 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   fetchPaymentTransactions,
   fetchShopSettlements,
+  fetchRealOrderSettlements,
   fetchShops,
   markSettlementPaid,
+  markRealSettlementPaid,
   updateSettlementStatus,
   bulkMarkSettlementsPaid,
   triggerManualSettlementGeneration
@@ -84,11 +86,11 @@ export const SettlementsPage: React.FC = () => {
     try {
       const [pData, sData, shData] = await Promise.all([
         fetchPaymentTransactions(200),
-        fetchShopSettlements(200),
+        fetchRealOrderSettlements(),
         fetchShops(100)
       ]);
       setPayments(pData);
-      setSettlements(sData);
+      setSettlements(sData.settlements);
       setShops(shData);
       if (shData.length > 0 && !manualShopId) {
         setManualShopId(shData[0].id);
@@ -121,7 +123,7 @@ export const SettlementsPage: React.FC = () => {
     if (!payoutModal) return;
     setIsProcessingAction(true);
     try {
-      await markSettlementPaid(payoutModal.id, payoutRefNote || 'Bank Transfer Executed');
+      await markRealSettlementPaid(payoutModal, payoutRefNote || 'Bank Transfer Executed');
       setSettlements((prev) =>
         prev.map((s) =>
           s.id === payoutModal.id
@@ -172,7 +174,8 @@ export const SettlementsPage: React.FC = () => {
     if (selectedIds.length === 0) return;
     setIsProcessingAction(true);
     try {
-      await bulkMarkSettlementsPaid(selectedIds, 'Bulk Super Admin Payout');
+      const selectedSettlements = settlements.filter((s) => selectedIds.includes(s.id));
+      await bulkMarkSettlementsPaid(selectedSettlements, 'Bulk Super Admin Payout');
       setSettlements((prev) =>
         prev.map((s) =>
           selectedIds.includes(s.id)
@@ -203,11 +206,15 @@ export const SettlementsPage: React.FC = () => {
     }
   };
 
+  // Cycle Type Tab Filter
+  const [cycleTab, setCycleTab] = useState<'all' | 'current' | 'previous' | 'earlier'>('all');
+
   // Filter application
   const filteredSettlements = useMemo(() => {
     return settlements.filter((s) => {
       const matchesShop = filters.shopIds.length === 0 || filters.shopIds.includes(s.shop_id);
       const matchesStatus = filters.status === 'all' || s.status === filters.status;
+      const matchesCycle = cycleTab === 'all' || s.cycle_type === cycleTab;
 
       let matchesDate = true;
       if (filters.startDate) {
@@ -219,9 +226,9 @@ export const SettlementsPage: React.FC = () => {
         matchesDate = matchesDate && cycleDate <= filters.endDate;
       }
 
-      return matchesShop && matchesStatus && matchesDate;
+      return matchesShop && matchesStatus && matchesCycle && matchesDate;
     });
-  }, [settlements, filters]);
+  }, [settlements, filters, cycleTab]);
 
   // Summaries
   const pendingSettlements = settlements.filter((s) => s.status === 'pending' || (s.status as any) === 'processing');
@@ -440,6 +447,17 @@ export const SettlementsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            <div className="pt-2">
+              <Tabs value={cycleTab} onValueChange={(v: any) => setCycleTab(v)} className="w-full">
+                <TabsList className="grid grid-cols-4 h-9 max-w-xl text-xs">
+                  <TabsTrigger value="all" className="text-xs">All Cycles</TabsTrigger>
+                  <TabsTrigger value="current" className="text-xs font-semibold text-primary">Current (15-16 Oct)</TabsTrigger>
+                  <TabsTrigger value="previous" className="text-xs">Previous (13-14 Oct)</TabsTrigger>
+                  <TabsTrigger value="earlier" className="text-xs">Earlier Cycles</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="w-full overflow-x-auto rounded-lg border border-border">
@@ -507,8 +525,27 @@ export const SettlementsPage: React.FC = () => {
                           <td className="py-3 px-4 whitespace-nowrap font-bold text-foreground">
                             ₹{Number(s.net_payable || 0).toLocaleString()}
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap font-mono text-[10px]">
-                            {s.bank_ifsc || 'HDFC0001234'} ({s.bank_account_no ? `••••${s.bank_account_no.slice(-4)}` : '••••1012'})
+                          <td className="py-3 px-4 whitespace-nowrap text-[11px]">
+                            {s.bank_account_no ? (
+                              <div className="space-y-0.5">
+                                <div className="font-mono text-[11px] font-semibold text-foreground">
+                                  ••••{s.bank_account_no.slice(-4)} ({s.bank_ifsc || 'N/A'})
+                                </div>
+                                {s.upi_id && (
+                                  <div className="text-[10px] text-muted-foreground font-mono">
+                                    UPI: {s.upi_id}
+                                  </div>
+                                )}
+                              </div>
+                            ) : s.upi_id ? (
+                              <div className="font-mono text-[11px] text-foreground font-semibold">
+                                UPI: {s.upi_id}
+                              </div>
+                            ) : (
+                              <Badge variant="outline" className="text-amber-600 border-amber-500/30 text-[10px] bg-amber-500/5">
+                                Not added
+                              </Badge>
+                            )}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             {isCompleted && (
@@ -637,7 +674,13 @@ export const SettlementsPage: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Beneficiary Account:</span>
-                    <span className="font-mono">{payoutModal.bank_account_no || '987654321012'} ({payoutModal.bank_ifsc || 'HDFC0001234'})</span>
+                    <span className="font-mono">
+                      {payoutModal.bank_account_no
+                        ? `••••${payoutModal.bank_account_no.slice(-4)} (${payoutModal.bank_ifsc || 'N/A'})`
+                        : payoutModal.upi_id
+                        ? `UPI: ${payoutModal.upi_id}`
+                        : 'Not added'}
+                    </span>
                   </div>
                 </div>
 

@@ -114,13 +114,13 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       {/* Desktop Fixed Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 h-screen fixed inset-y-0 left-0 z-40 border-r border-border bg-sidebar select-none">
-        {/* Brand Header - Enlarged & Left-Aligned Logo per Section 4 */}
-        <div className="h-20 shrink-0 flex items-center px-4 border-b border-sidebar-border justify-between">
+        {/* Brand Header - Height h-16 aligned exactly with main header h-16, Logo increased by 3px */}
+        <div className="h-16 shrink-0 flex items-center px-4 border-b border-sidebar-border justify-between">
           <div className="flex items-center">
             <img
               src="https://miaoda-conversation-file.s3cdn.medo.dev/user-awm3lxjnyu4g/app-evp0b1kqhrlt/20261011/printOn24.png"
               alt="PrintOn24"
-              className="h-10 w-auto max-w-[170px] object-contain transition-transform hover:scale-105"
+              className="h-[43px] w-auto max-w-[180px] object-contain transition-transform hover:scale-105"
             />
           </div>
           <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0">v2.4</Badge>

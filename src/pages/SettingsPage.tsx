@@ -4,7 +4,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import {
   updateSuperAdminProfile,
   fetchSecurityPasswordConfigs,
-  updateSecurityPasswordWithOtp
+  updateSecurityPasswordWithOtp,
+  setUnifiedSecurityPin
 } from '@/services/api';
 import {
   Settings,
@@ -70,14 +71,23 @@ export const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   // Security Passwords State
-  const [securityConfigs, setSecurityConfigs] = useState<Record<SecurityPasswordType, SecurityPasswordConfig | null>>({
+  const [securityConfigs, setSecurityConfigs] = useState<Record<string, SecurityPasswordConfig | null>>({
     credential_view: null,
     settlement_payout: null,
-    payment_methods: null
+    payment_methods: null,
+    system_security_pin: null
   });
   const [loadingConfigs, setLoadingConfigs] = useState(true);
 
-  // OTP & Password Update Modal State
+  // Unified PIN Setup Modal State (Requires Super Admin Password)
+  const [showUnifiedPinModal, setShowUnifiedPinModal] = useState(false);
+  const [adminSignInPassword, setAdminSignInPassword] = useState('');
+  const [unifiedPin, setUnifiedPin] = useState('');
+  const [confirmUnifiedPin, setConfirmUnifiedPin] = useState('');
+  const [unifiedPinError, setUnifiedPinError] = useState<string | null>(null);
+  const [submittingUnifiedPin, setSubmittingUnifiedPin] = useState(false);
+
+  // OTP & Password Update Modal State (legacy / fallback)
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [activePasswordType, setActivePasswordType] = useState<SecurityPasswordType | null>(null);
   const [verifiedOtpCode, setVerifiedOtpCode] = useState<string | null>(null);
@@ -98,22 +108,55 @@ export const SettingsPage: React.FC = () => {
     setLoadingConfigs(true);
     try {
       const list = await fetchSecurityPasswordConfigs();
-      const map: Record<SecurityPasswordType, SecurityPasswordConfig | null> = {
+      const map: Record<string, SecurityPasswordConfig | null> = {
         credential_view: null,
         settlement_payout: null,
-        payment_methods: null
+        payment_methods: null,
+        system_security_pin: null
       };
       list.forEach((item) => {
-        const pType = item.password_type as SecurityPasswordType;
-        if (pType in map) {
-          map[pType] = item;
-        }
+        map[item.password_type] = item;
       });
       setSecurityConfigs(map);
     } catch {
       toast.error('Failed to load security configurations');
     } finally {
       setLoadingConfigs(false);
+    }
+  };
+
+  const handleSaveUnifiedPin = async () => {
+    if (!adminSignInPassword.trim()) {
+      setUnifiedPinError('Please enter your Super Admin sign-in password.');
+      return;
+    }
+    if (unifiedPin.length !== 6 || !/^\d{6}$/.test(unifiedPin)) {
+      setUnifiedPinError('Security PIN must be exactly 6 numeric digits.');
+      return;
+    }
+    if (unifiedPin !== confirmUnifiedPin) {
+      setUnifiedPinError('PINs do not match. Please verify.');
+      return;
+    }
+
+    setSubmittingUnifiedPin(true);
+    setUnifiedPinError(null);
+    try {
+      const res = await setUnifiedSecurityPin(unifiedPin, adminSignInPassword);
+      if (res.success) {
+        toast.success('Unified 6-Digit Security PIN configured and synced across all protected views!');
+        setShowUnifiedPinModal(false);
+        setAdminSignInPassword('');
+        setUnifiedPin('');
+        setConfirmUnifiedPin('');
+        await loadSecurityConfigs();
+      } else {
+        setUnifiedPinError(res.error || 'Failed to update security PIN.');
+      }
+    } catch {
+      setUnifiedPinError('Network error. Failed to save security PIN.');
+    } finally {
+      setSubmittingUnifiedPin(false);
     }
   };
 
@@ -224,79 +267,93 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION: 3 DEDICATED SECURITY PASSWORD CARDS */}
+      {/* SECTION: UNIFIED 6-DIGIT SYSTEM SECURITY PIN */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-heading font-bold text-foreground flex items-center gap-2">
-              <Shield className="w-4 h-4 text-primary" /> Security Passwords & Access Protection
+              <Shield className="w-4 h-4 text-primary" /> Unified 6-Digit System Security PIN
             </h3>
             <p className="text-xs text-muted-foreground">
-              Three dedicated 6-digit passwords. All changes and views require verification via Super Admin email OTP.
+              A single unified master PIN protecting Shopkeeper Credentials, Settlements & Payouts, and Payment Method Configurations.
             </p>
           </div>
           <Badge variant="outline" className="text-xs bg-primary/5 text-primary border-primary/20">
-            6-Digit Numeric Standards
+            6-Digit Master Security Standard
           </Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {passwordCardConfigs.map((cfg) => {
-            const Icon = cfg.icon;
-            const config = securityConfigs[cfg.type];
-            const isSet = config?.is_configured;
+        <Card className="border border-border shadow-sm hover:border-primary/40 transition-colors">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between mb-1">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              {securityConfigs.system_security_pin?.is_configured || securityConfigs.credential_view?.is_configured ? (
+                <Badge className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/20 text-xs font-semibold">
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Master PIN Active & Protected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-xs bg-amber-500/5">
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" /> Not Configured
+                </Badge>
+              )}
+            </div>
+            <CardTitle className="text-base font-heading font-bold">Unified Master Security PIN</CardTitle>
+            <CardDescription className="text-xs">
+              Synchronized security gate across all sensitive admin views. Setting or updating this PIN requires the Super Admin account sign-in password.
+            </CardDescription>
+          </CardHeader>
 
-            return (
-              <Card key={cfg.type} className="flex flex-col border border-border shadow-sm hover:border-primary/40 transition-colors">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    {isSet ? (
-                      <Badge className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/20 text-[10px] font-semibold">
-                        <ShieldCheck className="w-3 h-3 mr-1" /> Configured
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px] bg-amber-500/5">
-                        <AlertCircle className="w-3 h-3 mr-1" /> Not Configured
-                      </Badge>
-                    )}
-                  </div>
-                  <CardTitle className="text-sm font-heading font-bold">{cfg.title}</CardTitle>
-                  <CardDescription className="text-xs min-h-[36px]">{cfg.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 flex-1">
-                  <div className="bg-muted/40 p-3 rounded-lg border border-border/50 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>Stored State:</span>
-                      <span className="font-mono">{isSet ? 'Masked (6 Digits)' : 'Unset'}</span>
-                    </div>
-                    <div className="flex items-center justify-between font-mono text-xs font-bold text-foreground">
-                      <span>Password:</span>
-                      <span className="tracking-widest text-primary text-sm">{isSet ? '••••••' : 'None'}</span>
-                    </div>
-                    {config?.updated_at && (
-                      <p className="text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-                        Updated: {new Date(config.updated_at).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter className="pt-2">
-                  <Button
-                    variant={isSet ? 'outline' : 'default'}
-                    className="w-full text-xs h-9 font-medium"
-                    onClick={() => handleStartPasswordUpdate(cfg.type)}
-                  >
-                    <Key className="w-3.5 h-3.5 mr-1.5" />
-                    {isSet ? 'Update with Email OTP' : 'Configure 6-Digit Password'}
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </div>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="p-3 bg-muted/40 rounded-lg border border-border/50">
+                <span className="text-[11px] text-muted-foreground block font-medium">1. Shopkeeper Credentials</span>
+                <span className="text-xs font-semibold text-foreground mt-0.5 block">Vendor Shops Directory</span>
+              </div>
+              <div className="p-3 bg-muted/40 rounded-lg border border-border/50">
+                <span className="text-[11px] text-muted-foreground block font-medium">2. Settlements & Payouts</span>
+                <span className="text-xs font-semibold text-foreground mt-0.5 block">2-Day Cycle Ledger & Disbursal</span>
+              </div>
+              <div className="p-3 bg-muted/40 rounded-lg border border-border/50">
+                <span className="text-[11px] text-muted-foreground block font-medium">3. Payment Methods</span>
+                <span className="text-xs font-semibold text-foreground mt-0.5 block">Razorpay / Counter Switches</span>
+              </div>
+            </div>
+
+            <div className="bg-muted/30 p-3.5 rounded-lg border border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-[11px] text-muted-foreground block">Stored PIN State:</span>
+                <span className="font-mono text-sm font-bold text-foreground tracking-widest">
+                  {securityConfigs.system_security_pin?.is_configured || securityConfigs.credential_view?.is_configured
+                    ? '•••••• (6 Digits)'
+                    : 'Unset'}
+                </span>
+                {(securityConfigs.system_security_pin?.updated_at || securityConfigs.credential_view?.updated_at) && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Last synced: {new Date(securityConfigs.system_security_pin?.updated_at || securityConfigs.credential_view?.updated_at || '').toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant={securityConfigs.system_security_pin?.is_configured || securityConfigs.credential_view?.is_configured ? 'outline' : 'default'}
+                className="text-xs h-9 font-medium gap-1.5 shrink-0"
+                onClick={() => {
+                  setAdminSignInPassword('');
+                  setUnifiedPin('');
+                  setConfirmUnifiedPin('');
+                  setUnifiedPinError(null);
+                  setShowUnifiedPinModal(true);
+                }}
+              >
+                <Key className="w-3.5 h-3.5" />
+                {securityConfigs.system_security_pin?.is_configured || securityConfigs.credential_view?.is_configured
+                  ? 'Change Master Security PIN'
+                  : 'Configure 6-Digit Master PIN'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -449,6 +506,102 @@ export const SettingsPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* UNIFIED 6-DIGIT MASTER PIN SETUP MODAL */}
+      {showUnifiedPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md bg-card border border-border shadow-2xl rounded-2xl p-6 sm:p-8 space-y-5">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-primary/10 text-primary flex items-center justify-center shadow-inner">
+                <KeyRound className="w-7 h-7" />
+              </div>
+              <h3 className="text-xl font-heading font-bold text-foreground">
+                Set Master 6-Digit Security PIN
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Enter your Super Admin sign-in password to verify identity, then configure the synchronized master PIN.
+              </p>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Super Admin Sign-In Password *</Label>
+                <Input
+                  type="password"
+                  placeholder="Enter admin password (e.g. admin123)"
+                  value={adminSignInPassword}
+                  onChange={(e) => {
+                    setAdminSignInPassword(e.target.value);
+                    setUnifiedPinError(null);
+                  }}
+                  className="h-9 text-xs"
+                />
+                <span className="text-[10px] text-muted-foreground">Required to authorize setting or changing the security PIN.</span>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">New 6-Digit Security PIN *</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Enter 6-digit numeric PIN"
+                  value={unifiedPin}
+                  onChange={(e) => {
+                    setUnifiedPin(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setUnifiedPinError(null);
+                  }}
+                  className="h-9 text-center font-mono font-bold tracking-widest text-base"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Confirm 6-Digit Security PIN *</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  placeholder="Re-enter 6-digit numeric PIN"
+                  value={confirmUnifiedPin}
+                  onChange={(e) => {
+                    setConfirmUnifiedPin(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setUnifiedPinError(null);
+                  }}
+                  className="h-9 text-center font-mono font-bold tracking-widest text-base"
+                />
+              </div>
+
+              {unifiedPinError && (
+                <div className="p-2.5 bg-destructive/10 border border-destructive/20 rounded-lg text-xs text-destructive text-center font-medium">
+                  {unifiedPinError}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 h-9 text-xs"
+                  onClick={() => setShowUnifiedPinModal(false)}
+                  disabled={submittingUnifiedPin}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 h-9 text-xs"
+                  onClick={handleSaveUnifiedPin}
+                  disabled={submittingUnifiedPin || !adminSignInPassword || unifiedPin.length !== 6 || confirmUnifiedPin.length !== 6}
+                >
+                  {submittingUnifiedPin ? 'Saving & Syncing...' : 'Save Unified PIN'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SUPER ADMIN EMAIL OTP MODAL */}
       {activePasswordType && (

@@ -2,19 +2,19 @@
 
 ## 1. Application Overview
 - **Application Name**: PrintOn24 Super Admin Panel
-- **Application Description**: A centralized web administration system for PrintOn24 super administrators to oversee platform operations, financial settlements, shopkeeper registrations, capacity limits, advertisements, CMS content, promotional notices, and support requests with verified database persistence and real-time state synchronization.
+- **Application Description**: A centralized web administration system for PrintOn24 super administrators to oversee platform operations, real-time revenue analytics, shop status lifecycles, QR-blocking controls, accurate commission-based settlements, PC capacity allocations, subscription plans, dynamic CMS content, advertisements, job postings, and platform security using a unified 6-digit administrative PIN.
 
 ## 2. Target Users & Core Scenarios
 - **Target Users**:
-  - Super Administrators: Platform administrators responsible for managing global platform operations, shop statuses, financial settlements, advertisements, CMS content, support tickets, and system security settings.
+  - Super Administrators: Platform administrators responsible for managing platform operations, shop lifecycles, financial payouts, subscription assignments, CMS documents, support tickets, and system security.
 - **Core Scenarios**:
-  - Super Admin authenticates securely via an isolated sign-in interface and navigates platform modules using an adaptive vertical sidebar.
-  - Super Admin monitors real-time platform metrics and manages operational controls via dynamic platform controller toggles on the Dashboard.
-  - Super Admin activates or deactivates printing shops, automatically triggering notification records in the notifications table and updating shopkeeper access.
-  - Super Admin calculates and processes eligible settlements and payouts following standard settlement cycles.
-  - Super Admin performs database-persisted CRUD operations on Homepage Banners (`home_banners`) and Upload Page Ads (`upload_page_ads`).
-  - Super Admin edits, previews, and publishes CMS documents (`cms_content`, `platform_policies`, `platform_terms`) using a clean, streamlined content editor.
-  - Super Admin manages promotional alerts, job postings, contact requests, and support tickets with guaranteed database persistence before interface state updates.
+  - Super Admin signs in through a branded sign-in interface and navigates modules via an aligned vertical sidebar.
+  - Super Admin views real-time revenue and payment breakdown graphs computed from actual database records in Indian Standard Time (IST).
+  - Super Admin manages shop operational states (Active, Inactive, Disabled); deactivating or disabling a shop immediately blocks shopkeeper login, customer QR/shop-code discovery, uploads, and order creation while preserving historical data.
+  - Super Admin verifies 2-day settlement cycles, commission deductions, and marks payouts with live database updates and real bank details.
+  - Super Admin assigns or upgrades shopkeeper subscription plans and modifies shop-specific PC capacity limits with immediate database persistence.
+  - Super Admin unlocks sensitive operations (Shopkeeper Credentials, Settlements & Payouts, Payment Methods) via a unified 6-digit Security PIN modal with blurred background and rate-limiting.
+  - Super Admin edits and publishes structured CMS content (including the seeded About Us sections) into `cms_content` for public display.
 
 ## 3. Page Structure & Functional Details
 
@@ -22,178 +22,233 @@
 ```
 PrintOn24 Super Admin Panel
 ├── Global Layout & Navigation
-│   ├── Vertical Sidebar (Enlarged, Left-Aligned Logo, Collapsible Navigation)
-│   └── Header Bar (Session Controls, Logout Action)
+│   ├── Vertical Sidebar (Height-Adjusted Logo, Aligned Sub-Divider Line, Collapsible Menu)
+│   └── Header Bar (Session Status, Logout Action)
 ├── Authentication
-│   └── Super Admin Sign-In Page (Secure Credential Authentication, Enhanced Graphics)
+│   └── Super Admin Sign-In Page (Branded Portal Graphics, Credential Authentication)
 ├── Dashboard (Page 1)
-│   ├── Live Dynamic Metric Cards
-│   ├── Revenue & Payment Method Line Chart
-│   └── Platform Controllers Section (Active System Toggles & DB Controls)
+│   ├── Live Dynamic Metric Cards (DB Aggregated)
+│   ├── Real-Time Revenue & Payment Breakdown Chart (IST Timezone)
+│   └── Platform Quick Links (Direct Navigation Shortcuts including Ads and Careers)
 ├── Operational Ledger (Page 2)
 │   └── Live Transaction & Print Volume Ledger (Search, Filters, Pagination)
 ├── Shops & Shopkeepers (Page 3)
-│   ├── Registered Printing Shops Directory (Status Toggle with Notification Dispatch, Delete)
+│   ├── Shop Directory (Active / Inactive / Disabled Status, QR Blocking Logic, Delete)
+│   ├── Shopkeeper Credential Inspection (PIN Protected)
 │   └── Shopkeeper Registration Form
 ├── Payment Methods (Page 4)
-│   └── Shop-Specific Payment Configuration Table
-├── Settlements & Payouts (Page 5)
-│   ├── Financial Summary Cards (Gross Online, Fees, Net Payable)
-│   ├── Payouts Ledger Table (Multi-Filter by Status, Date, Shop, Method)
-│   └── Settlement Actions (Approve, Process, Mark Paid, Export)
+│   └── Shop Payment Configuration Table (PIN Protected)
+├── Settlements & Payouts (Page 5 - PIN Protected)
+│   ├── Financial Summary Cards (Pending Payouts, Completed Payouts, Total Commission, Next Settlement Date)
+│   ├── 2-Day Settlement Cycle Ledger (Current, Previous, Earlier Cycles; Shop Filter; Date Range)
+│   ├── Shop Bank Details Display (Actual Saved Details or Not Added State)
+│   └── Payout Settlement Action (Mark Paid with Ref ID, Recalculate Pending Amounts)
 ├── PC Capacity Limit (Page 6)
-│   └── Shop PC Limit Tracker & Quota Editor
+│   └── Shop PC Limit Tracker & Shop-Specific Quota Editor
 ├── Subscription Plans (Page 7)
-│   └── Platform Plans Registry (CRUD Actions, Pricing, PC Limits, Status)
+│   ├── Platform Plans Registry (CRUD Actions, Pricing, PC Limits, Status)
+│   ├── Plan Assignment to Shop (DB Persistence, Immediate Shopkeeper Association)
+│   └── Plan Upgrade Action (Immediate Expiry & Quota Update)
 ├── Users & Memberships (Page 8)
 │   ├── Registered User Directory (Search, Pagination)
-│   └── Shop-Wise VIP Members (Shop Name Display, Status Filter)
+│   └── Shop-Wise VIP Members (Readable Shop Name Display)
 ├── Advertisements (Page 9)
 │   ├── Home Page Banners (Persistent CRUD on home_banners table)
 │   └── Upload Page Ads (Persistent CRUD on upload_page_ads table)
 ├── Dynamic Pages & CMS (Page 10)
-│   ├── About PrintOn24 Editor (cms_content table, Clean Editor, Preview & Publish)
-│   ├── Privacy Policies Editor (platform_policies table, Clean Editor, Preview & Publish)
-│   └── Terms and Conditions Editor (platform_terms table, Clean Editor, Preview & Publish)
+│   ├── About PrintOn24 Section Editor (cms_content table, Structured Section CRUD)
+│   ├── Privacy Policies Editor (platform_policies table, Clean Editor, Publish Action)
+│   └── Terms and Conditions Editor (platform_terms table, Clean Editor, Publish Action)
 ├── Promotional Alerts & Notices (Page 11)
-│   └── Alerts Management (CRUD persisting to notifications table, Target Audience)
+│   └── Alerts Management (CRUD persisting to notifications table)
 ├── Application Requests (Page 12)
-│   └── Request Inbox (contact_messages, app_feedback, ad_requests with DB State Persistence)
+│   └── Request Inbox (contact_messages, app_feedback, ad_requests)
 ├── Jobs & Careers (Page 13)
-│   ├── Job Postings Directory (CRUD & Publish/Unpublish persisting to careers table)
-│   └── Candidate Applications View (Applicant Profile & Formatted Cover Note)
+│   ├── Job Postings Directory (CRUD persisting to careers table)
+│   └── Candidate Applications View
 ├── Help & Support (Page 14)
-│   └── Support Tickets Ledger (CRUD & Status Updates persisting to support_tickets table)
+│   └── Support Tickets Ledger (CRUD persisting to support_tickets table)
 └── System Settings & Security (Page 15)
-    ├── Security Passwords & Access Protection
+    ├── Unified 6-Digit Security PIN Configuration (Sign-In Password Verification, Hashed Storage)
     └── Global Platform Configurations
 ```
 
 ### 3.2 Functional Description
 
 #### 3.2.1 Global UI & Authentication
-- **Sidebar Logo Presentation**:
-  - PrintOn24 logo displayed in the vertical sidebar header with increased size and strict left alignment, maintaining balanced padding without overlapping menu items.
+- **Sidebar Navigation**:
+  - PrintOn24 logo height increased by 3px in the vertical sidebar header.
+  - Horizontal dividing line directly below the sidebar logo is aligned with the header horizontal border line to eliminate spacing mismatches.
+  - Navigation menu provides collapsible links across all platform modules.
 - **Sign-In Page**:
-  - Isolated admin login interface with enhanced graphics and secure credential validation.
-  - Handles authentication validation, session storage, and secure logout redirection.
-- **Responsive Layout**:
-  - Layout adapts across desktop, laptop, tablet, and mobile viewports with collapsible navigation and horizontally scrollable tables.
+  - Administrative authentication page with redesigned visual graphic artwork aligning with PrintOn24 branding and shopkeeper portal styling.
+  - Validates super admin credentials and initiates secure administrative session.
 
 #### 3.2.2 Dashboard (Page 1)
-- **Live Metric Cards**: Aggregates real-time figures from database records covering active users, registered shops, orders, revenue, and active memberships.
-- **Revenue Breakdown Chart**: Dotted-point line graph aggregating payment and order data with date range filtering (Today, Yesterday, Last 7 Days, Last 30 Days, Custom).
-- **Platform Controllers**: Comprehensive control panel rendering active platform toggles backed by database records and system settings (e.g., global print acceptance toggle, maintenance mode switch, new shop registration lock, system alert banner override, and payout processing lock).
+- **Live Metric Cards**: Aggregates real-time values from the database for active users, registered shops, orders, revenue, and active memberships.
+- **Dynamic Revenue & Payment Breakdown Chart**:
+  - Renders time-series data using actual completed order and transaction records from the database.
+  - Converts timestamps to Indian Standard Time (IST) for accurate daily and periodic aggregation.
+  - Supports filtering by date ranges (Today, Yesterday, Last 7 Days, Last 30 Days, Custom Range).
+- **Platform Quick Links**:
+  - Quick shortcut links including direct navigation to: Advertisements: Home Banners, Advertisements: Upload Page Ads, and Jobs & Careers.
+  - The legacy Platform Controllers and Operational Switches section at the bottom of the dashboard is removed.
+- **Layout & Responsiveness**: Structured container grid preventing content overflow across desktop, tablet, and mobile viewports.
 
 #### 3.2.3 Operational Ledger (Page 2)
-- Displays database-backed transaction records, shop print volumes, and aggregated operational totals.
-- Provides keyword search, date filtering, status filtering, and table pagination.
+- Displays transaction logs and order print volume records stored in the database with search, filter, and pagination support.
 
 #### 3.2.4 Shops & Shopkeepers (Page 3)
-- **Shop Directory**: Displays registered print shops and shopkeeper details. Supports status toggles (activate/deactivate), shop detail inspection, and account removal.
-- **Status Persistence & Notification**: Deactivating or reactivating a shop persists the new status in the database and automatically writes a corresponding notification record into the `notifications` table for the target shopkeeper.
-- **Shopkeeper Registration**: Persists new shopkeeper credentials directly to the database, enabling immediate login access.
+- **Shop Lifecycle & Status Management**:
+  - Each shop record maintains one of three states: `Active`, `Inactive`, or `Disabled`.
+  - Toggling status persists immediately to the database.
+  - When a shop is set to `Inactive` or `Disabled`:
+    - Shopkeeper login access is blocked.
+    - Customer QR code lookup and shop-code search are blocked.
+    - Document uploads and order creations targeting the shop are blocked on the backend.
+    - Existing historical orders, shop profiles, and transaction records remain preserved.
+  - When reactivated (`Active`), login, QR discovery, document upload, and order creation capabilities are restored immediately.
+- **Security PIN Protected Credential View**:
+  - Inspecting shopkeeper credentials requires entering the unified 6-digit Security PIN.
 
 #### 3.2.5 Payment Methods (Page 4)
 - Manages shop-specific payment options (Razorpay/Online, Cash at Counter, UPI, Wallets).
-- Supports adding, editing, enabling/disabling, and deleting payment methods per shop with direct database persistence.
+- Access to modify or configure payment methods is protected by the unified 6-digit Security PIN.
 
 #### 3.2.6 Settlements & Payouts (Page 5)
-- **Calculations & Summaries**: Live summary metrics displaying Gross Online Amount, Platform Fees, and Net Payable Amount calculated strictly from eligible, paid online orders.
-- **Multi-Filter Ledger**: Filtering across Payout Status (Pending, Processing, Settled, Rejected), Date Ranges, Shop Identifier, Amount Ranges, and Payment Methods.
-- **Payout Operations**: Idempotent backend actions for approving requests, processing settlements adhering to the 2-day cycle, and marking records as paid with export functionality.
+- **Security PIN Protection**: Accessing the Settlements & Payouts page or performing payout actions requires PIN verification.
+- **Accurate Financial Calculations**:
+  - Removes static and mock data.
+  - Calculates Gross Online Amount, Platform Commission (e.g., 5% platform fee), and Net Payable Amount strictly from completed online orders stored in the database.
+- **Summary Cards**:
+  - Four real-time summary cards: Pending Payouts, Completed Payouts, Total Commission, and Next Settlement Date.
+- **2-Day Settlement Cycle Grouping**:
+  - Groups settlement batches into 2-day cycles: Current Cycle, Previous Cycle, and Earlier Cycles.
+  - Deduplicates shops so each shop appears once per cycle batch.
+  - Supports filtering by cycle, shop name/ID, and custom date range.
+- **Bank Details Display**:
+  - Displays actual saved bank account details (Bank Name, Account Number, IFSC) or a designated `Not added` state if unconfigured.
+- **Payout Action Execution**:
+  - Marking a payout as completed updates the database status, payout amount, settlement timestamp, and transaction reference ID, triggering an immediate recalculation of pending balances.
 
 #### 3.2.7 PC Capacity Limit (Page 6)
-- Manages hardware allocation quotas per shop.
-- Persists limit adjustments to database tables and enforces quotas through backend validation.
+- Super Admin modifies PC allocation limits per shop.
+- Limit adjustments persist directly to the database for the targeted shop only and apply immediately to workstation connections.
 
 #### 3.2.8 Subscription Plans (Page 7)
-- Full CRUD management for platform subscription tiers (Plan Name, Price, PC Limit allowance, Validity duration, Status).
-- Dynamic status filtering and real-time database persistence.
+- **Plan Management**: CRUD operations for platform subscription tiers (Name, Price, PC Limit allowance, Duration, Status).
+- **Assign Subscription Action**:
+  - Super Admin selects a shop and assigns a subscription plan.
+  - Validates and writes plan allocation directly to the database, applying the plan to the target shopkeeper.
+  - Updates tracking ledger immediately with start date, expiry date, and active status.
+- **Upgrade Action**:
+  - Allows upgrading an existing shop subscription with updated PC limits and new validity dates persisted directly to the database.
 
 #### 3.2.9 Users & Memberships (Page 8)
-- **User Registry**: Displays registered end-users with database-backed search and pagination.
-- **VIP Memberships**: Lists VIP members displaying actual shop names (or clean short names for extended titles) in the Associated Shop column rather than raw internal IDs (e.g., ENT-02).
+- User registry with search and pagination.
+- VIP Memberships table displays readable shop names in the Associated Shop column.
 
 #### 3.2.10 Advertisements (Page 9)
-- **Home Page Banners**: CRUD, publish, unpublish, and delete operations persisting directly to the `home_banners` table. Local UI state updates only after successful database confirmation.
-- **Upload Page Ads**: CRUD, publish, unpublish, and delete operations persisting directly to the `upload_page_ads` table. Local UI state updates only after successful database confirmation.
-- Deleted or unpublished records are excluded from public panel queries immediately.
+- **Home Page Banners**: CRUD, publish, and delete operations persisting directly to `home_banners`.
+- **Upload Page Ads**: CRUD, publish, and delete operations persisting directly to `upload_page_ads`.
+- UI updates upon database confirmation; unpublished/deleted ads are excluded from public endpoints.
 
 #### 3.2.11 Dynamic Pages & CMS (Page 10)
-- **Target Documents & Tables**:
-  - `About PrintOn24`: Reads from and writes directly to `cms_content`.
-  - `Privacy Policies`: Reads from and writes directly to `platform_policies`.
-  - `Terms and Conditions`: Reads from and writes directly to `platform_terms`.
-- **Clean Content Editor**:
-  - Simple, clean text/markdown editor without complex Word-style rich text toolbars, preserving structured content, formatting tags, and line breaks.
-  - Functional Save Draft, Preview mode, and Publish/Unpublish actions backed by direct table persistence.
+- **About PrintOn24 Content Synchronization & Management**:
+  - Content stored section-by-section in `cms_content` covering:
+    - Story & Mission
+    - What is PrintOn24 (4 Pillars: QR-Based Instant Discovery, Precision Print Engine, Flexible Dual Payments, Silent Hardware Dispatch)
+    - Purpose & Direction (Mission & Vision statements)
+    - Leadership & Architecture (Technology Partner, Engineering & Core team, Growth & Analytics team)
+    - Benefits at a Glance (Customer Benefits, Shopkeeper Benefits)
+  - Super Admin CMS editor provides section-by-section CRUD, draft saving, and publishing directly to `cms_content` for public rendering.
+- **Policies & Terms**:
+  - Privacy Policies editor writes to `platform_policies`.
+  - Terms and Conditions editor writes to `platform_terms`.
 
 #### 3.2.12 Promotional Alerts & Notices (Page 11)
-- Create, view, edit, delete, publish, and unpublish platform notices.
-- Operations write directly to the `notifications` table and reflect across target panels upon publication.
+- Create, edit, publish, and delete alerts persisting directly to the `notifications` table.
 
 #### 3.2.13 Application Requests (Page 12)
-- Real-time inbox handling categories across `contact_messages`, `app_feedback`, and `ad_requests` tables.
-- Status changes and replies write directly to the respective database tables before UI state updates.
+- View and manage incoming messages across `contact_messages`, `app_feedback`, and `ad_requests` tables.
 
 #### 3.2.14 Jobs & Careers (Page 13)
-- **Job Postings**: CRUD and Publish/Unpublish actions writing directly to the `careers` table. Unpublished postings are immediately excluded from user listings.
-- **Candidate Applications**: Inspection view displaying applicant details with the cover note rendered in a formatted block preserving line breaks.
+- Manage job postings and candidate applications with CRUD actions persisting to the `careers` table.
 
-#### 3.2.15 Help & Support (Page 14) & System Settings (Page 15)
-- **Help & Support**: Support ticket tracking, status updates, and response logs with all updates persisting directly to the `support_tickets` table.
-- **System Settings & Security**: Session management, administrative security passwords, and global configuration values.
+#### 3.2.15 Help & Support (Page 14)
+- Support ticket ledger and response logging persisting to the `support_tickets` table.
+
+#### 3.2.16 System Settings & Unified Security PIN (Page 15)
+- **Unified 6-Digit Security PIN**:
+  - Replaces separate area passwords with a single system-wide 6-digit PIN.
+  - Setting or modifying the PIN requires validating the Super Admin sign-in password.
+  - PIN is stored securely as a cryptographic hash.
+- **Protected Sensitive Areas**:
+  - Shopkeeper Credential Inspection (Page 3)
+  - Payment Methods Configuration (Page 4)
+  - Settlements & Payouts Module and Actions (Page 5)
+- **PIN Verification Interface**:
+  - Triggers a centered modal dialog with background blur.
+  - Unlocks module access upon valid 6-digit PIN entry.
+  - Enforces rate-limiting after repeated failed attempts to prevent brute-force entry.
 
 ## 4. Business Rules & Core Logic
 
-### 4.1 Database Write-First State Synchronization
-- All Super Admin actions (create, edit, publish, unpublish, delete, status toggle) must execute and confirm the database write before updating the client UI state.
-- If a database operation fails, the UI must retain previous state and display an error notice.
+### 4.1 Shop Lifecycle and QR Blocking Rules
+- An `Active` shop allows shopkeeper authentication, public QR discovery, document upload, and order dispatching.
+- An `Inactive` or `Disabled` shop immediately blocks:
+  - Shopkeeper login requests.
+  - Customer QR code scans and shop-code lookup queries.
+  - File upload requests and order creation API requests.
+- Status transitions preserve all past orders, payments, and account history.
 
-### 4.2 Shop Status & Notification Rule
-- Deactivating or activating a shop updates the shop record in the database and automatically creates a new notification record in the `notifications` table containing the status update message for the shopkeeper.
+### 4.2 Financial Settlement & Calculation Rules
+- Calculations include only completed online orders (`status = completed` and `payment_status = paid`).
+- Platform Fee = Gross Online Amount * Platform Commission Rate (e.g., 5%).
+- Net Payable Amount = Gross Online Amount - Platform Fee.
+- Each shop is represented exactly once per 2-day settlement cycle batch.
+- Marking a payout as paid updates payout record status to Settled, sets the paid timestamp, stores the reference ID, and recalculates pending balances.
 
-### 4.3 CMS and Advertisement Persistence Mapping
-- Home banners operate strictly against `home_banners`.
-- Upload ads operate strictly against `upload_page_ads`.
-- CMS modules operate strictly against `cms_content`, `platform_policies`, and `platform_terms`.
-- Alerts operate strictly against `notifications`.
-- Career items operate strictly against `careers`.
-- Support items operate strictly against `support_tickets`.
+### 4.3 Unified Security PIN Rules
+- Creating or updating the 6-digit PIN requires the Super Admin's current login password.
+- Entering the correct PIN grants session access to the protected module.
+- Exceeding maximum consecutive failed attempts locks PIN entry temporarily.
 
-### 4.4 Settlement Integrity & Idempotency
-- Settlement calculations include only successfully paid online orders.
-- Payout actions transition strictly through: Pending -> Processing -> Settled / Rejected.
-- Duplicate execution on already settled transactions is blocked.
+### 4.4 Subscription Assignment and Capacity Enforcement
+- Assigning or upgrading a subscription plan writes plan records to the database with active start date, computed expiry date, and assigned PC capacity.
+- PC capacity changes apply only to the specified shop without affecting other shop quotas.
+
+### 4.5 CMS Data Integrity Rule
+- About Us content updates persist to the `cms_content` table partitioned by section identifiers, maintaining data structure for public portal consumption.
 
 ## 5. Exceptions & Boundary Cases
 
 | Scenario | Condition | System Behavior |
 | :--- | :--- | :--- |
-| Database Write Failure | Backend DB write fails during banner deletion or notice creation | UI state remains unchanged and displays an operation failure alert |
-| Empty Chart Data | No order/payment records exist within the selected filter period | Render baseline line chart at zero values with empty state indicator |
-| CMS Draft Saving | Admin attempts to save without required document identifier | Display validation error message and prevent submission |
-| Shop Status Change Notification Failure | Shop status is updated but notification insert fails | Execute operation within transaction ensuring atomic update or rollback |
-| Long Shop Name in VIP | Associated shop name exceeds column width | Display clean short name with full name accessible in detail view |
-| Duplicate Payout Attempt | Processing action triggered on an already settled payout record | Reject action with notice that the record is already settled |
+| Customer Scans Disabled Shop QR | Shop status is `Inactive` or `Disabled` | Return shop unavailable error; block file upload and order submission |
+| Failed Security PIN Attempt | Incorrect 6-digit PIN entered in modal | Display error notice; maintain modal lock; increment rate-limit counter |
+| Rate-Limit Exceeded on PIN | 5 consecutive invalid PIN attempts | Temporarily lock PIN verification for designated cooldown duration |
+| Missing Bank Details | Shopkeeper has not configured bank information | Display `Not added` badge; prevent marking payout until bank details are added |
+| Subscription Plan Assignment Failure | Target shop record missing or invalid plan data | Abort transaction, display descriptive error, and maintain previous plan state |
+| PC Capacity Limit Update | Admin submits invalid or negative capacity quota | Reject submission with validation prompt; preserve existing capacity limit |
+| Duplicate Shop in Settlement Cycle | Multiple orders exist for a single shop in one cycle | Aggregate all shop orders into a single consolidated row for that cycle |
 
 ## 6. Acceptance Criteria
 
-1. The vertical sidebar header displays an enlarged, strictly left-aligned PrintOn24 logo.
-2. The sign-in page authenticates administrative credentials with enhanced visual assets and secure session handling.
-3. The Dashboard features an expanded Platform Controllers section with operational toggles connected to live platform settings and database records.
-4. Toggling shop status (activate/deactivate) persists to the database and generates a corresponding record in the `notifications` table for the shopkeeper.
-5. The Associated Shop column in the VIP Members table displays the readable shop name or clean short name instead of internal entity identifiers.
-6. Advertisement delete and update actions persist directly to `home_banners` and `upload_page_ads`, updating the UI only after successful database response.
-7. The Dynamic Pages & CMS module provides a clean editor without Word-style toolbars, reading and writing directly to `cms_content`, `platform_policies`, and `platform_terms` with functional Preview and Publish capabilities.
-8. Promotional alerts CRUD operations persist directly to the `notifications` table.
-9. Job postings publish and unpublish operations persist directly to the `careers` table.
-10. Status updates and replies across Application Requests (`contact_messages`, `app_feedback`, `ad_requests`) and Help & Support (`support_tickets`) persist to their respective database tables prior to local state updates.
+1. The vertical sidebar header displays the PrintOn24 logo with a 3px height increase and an aligned dividing line matching the header border line.
+2. The Dashboard displays real-time dynamic Revenue and Payment Method charts aggregating database transactions in Indian Standard Time (IST), includes updated quick links (Home Banners, Upload Page Ads, Jobs & Careers), and omits the legacy bottom platform controllers section.
+3. Setting a shop to `Inactive` or `Disabled` blocks shopkeeper login, QR discovery, document upload, and order creation on the backend while retaining existing shop data.
+4. Settlements & Payouts calculates Gross Amount, Commission, and Net Payable from completed DB orders, displays 4 dynamic summary cards, groups records into 2-day cycles without shop duplicates, and reflects real bank details or `Not added` state.
+5. Marking a payout as paid persists status, amount, date, and reference ID to the database and recalculates pending balances immediately.
+6. PC capacity limit edits persist to the database for the targeted shop only and apply immediately.
+7. Assigning or upgrading a subscription plan saves the plan association to the database, applies it to the target shopkeeper, and updates the tracking table with valid start and expiry dates.
+8. The unified 6-digit Security PIN modal with blurred background restricts access to Shopkeeper Credentials, Settlements & Payouts, and Payment Methods, requiring password verification to create/modify PIN and enforcing failed attempt rate-limiting.
+9. The About PrintOn24 CMS editor provides section-by-section CRUD and publishes structured content (Story, 4 Pillars, Mission & Vision, Team & Credits, Benefits) directly to the `cms_content` table.
+10. Sign-in page features branded visual artwork consistent with PrintOn24 design guidelines.
 
 ## 7. Out of Scope (Non-MVP)
 
-- Direct modification of User Panel or Shopkeeper Panel frontend codebases.
-- Automatic direct bank wire disbursement integrations.
-- Complex rich-text formatting plugins and WYSIWYG Word-style editors in CMS modules.
-- Permanent physical deletion of records tied to active transactional history.
+- Direct modification of User Panel or Shopkeeper Panel client-side rendering engines.
+- Automated bank gateway direct transfer execution.
+- Complex rich-text WYSIWYG toolbars for CMS plain-structured sections.
+- Permanent database row deletion of shops with existing transactional history.

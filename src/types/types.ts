@@ -1,7 +1,7 @@
 export type PaymentMethodConfig = 'counter' | 'razorpay' | 'both';
-export type ShopStatus = 'active' | 'inactive';
+export type ShopStatus = 'active' | 'inactive' | 'disabled';
 export type PCRequestStatus = 'pending' | 'approved' | 'rejected';
-export type SettlementStatus = 'pending' | 'completed';
+export type SettlementStatus = 'pending' | 'processing' | 'completed' | 'rejected';
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 
 export interface PrintShop {
@@ -145,6 +145,9 @@ export interface ShopSettlement {
   status: SettlementStatus;
   bank_account_no?: string | null;
   bank_ifsc?: string | null;
+  upi_id?: string | null;
+  cycle_key?: string;
+  cycle_type?: 'current' | 'previous' | 'earlier';
   paid_at?: string | null;
   payout_reference?: string | null;
   rejection_reason?: string | null;
@@ -316,7 +319,11 @@ export interface SuperAdminProfile {
   last_login_at?: string | null;
 }
 
-export type SecurityPasswordType = 'credential_view' | 'settlement_payout' | 'payment_methods';
+export type SecurityPasswordType =
+  | 'system_security_pin'
+  | 'credential_view'
+  | 'settlement_payout'
+  | 'payment_methods';
 
 export interface SecurityPasswordConfig {
   id: SecurityPasswordType;

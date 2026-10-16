@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchOverallPlatformStats, fetchPlatformSettings, updatePlatformSettingField } from '@/services/api';
-import type { OverallPlatformStats, PlatformSettings } from '@/types/types';
+import { fetchOverallPlatformStats } from '@/services/api';
+import type { OverallPlatformStats } from '@/types/types';
 import {
   Store,
   Users,
@@ -44,8 +44,6 @@ import { toast } from 'sonner';
 
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<OverallPlatformStats | null>(null);
-  const [platformSettings, setPlatformSettings] = useState<PlatformSettings | null>(null);
-  const [updatingSetting, setUpdatingSetting] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [periodDays, setPeriodDays] = useState<number>(14);
@@ -56,33 +54,15 @@ export const DashboardPage: React.FC = () => {
     else setLoading(true);
 
     try {
-      const [statsData, settingsData] = await Promise.all([
-        fetchOverallPlatformStats(periodDays),
-        fetchPlatformSettings()
-      ]);
+      const statsData = await fetchOverallPlatformStats(periodDays);
       setStats(statsData);
-      setPlatformSettings(settingsData);
-      if (isManual) toast.success('Analytics and platform settings refreshed from database');
+      if (isManual) toast.success('Analytics refreshed from database');
     } catch (err) {
       console.error(err);
       toast.error('Failed to load platform analytics');
     } finally {
       setLoading(false);
       setRefreshing(false);
-    }
-  };
-
-  const handleToggleSetting = async (field: keyof PlatformSettings, currentVal: boolean) => {
-    const nextVal = !currentVal;
-    setUpdatingSetting(field);
-    try {
-      await updatePlatformSettingField(field, nextVal);
-      setPlatformSettings((prev) => (prev ? { ...prev, [field]: nextVal } : null));
-      toast.success(`Platform setting updated: ${String(field)} is now ${nextVal ? 'ENABLED' : 'DISABLED'}`);
-    } catch (err: any) {
-      toast.error('Failed to update platform setting in database');
-    } finally {
-      setUpdatingSetting(null);
     }
   };
 
@@ -457,6 +437,43 @@ export const DashboardPage: React.FC = () => {
               </div>
               <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
             </Button>
+
+            {/* Quick Links 6, 7, 8 per Page 1.2 */}
+            <Button
+              variant="outline"
+              className="w-full justify-between h-11 text-xs"
+              onClick={() => navigate('/advertisements')}
+            >
+              <div className="flex items-center space-x-2">
+                <Megaphone className="w-4 h-4 text-rose-600" />
+                <span>Advertisements: Home Banners</span>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-11 text-xs"
+              onClick={() => navigate('/advertisements')}
+            >
+              <div className="flex items-center space-x-2">
+                <UploadCloud className="w-4 h-4 text-purple-600" />
+                <span>Advertisements: Upload Page Ads</span>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-11 text-xs"
+              onClick={() => navigate('/jobs')}
+            >
+              <div className="flex items-center space-x-2">
+                <Crown className="w-4 h-4 text-indigo-600" />
+                <span>Jobs & Careers</span>
+              </div>
+              <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -556,202 +573,6 @@ export const DashboardPage: React.FC = () => {
                 )}
               </tbody>
             </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Platform Controllers Section (Expanded & Fully Connected) */}
-      <Card className="shadow-sm border-border">
-        <CardHeader className="pb-3 border-b border-border">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base font-heading font-bold flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-primary" /> Platform Controllers & Operational Switches
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Real-time platform toggles stored in <code>platform_settings</code> directly governing User and Shopkeeper panels
-              </CardDescription>
-            </div>
-            <Badge variant="outline" className="text-xs text-muted-foreground self-start sm:self-auto">
-              Real Database Controls
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 md:p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* 1. Maintenance Mode */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.maintenance_mode ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'}`}>
-                    <ShieldAlert className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">Maintenance Mode</h4>
-                    <span className="text-[10px] text-muted-foreground">User panel service lock</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={Boolean(platformSettings?.maintenance_mode)}
-                  onCheckedChange={() => handleToggleSetting('maintenance_mode', Boolean(platformSettings?.maintenance_mode))}
-                  disabled={updatingSetting === 'maintenance_mode'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Locks user-facing print submission during maintenance windows while keeping super admin accessible.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>maintenance_mode</code></span>
-                <Badge variant={platformSettings?.maintenance_mode ? 'destructive' : 'secondary'} className="text-[9px]">
-                  {platformSettings?.maintenance_mode ? 'ACTIVE LOCK' : 'NORMAL (OPEN)'}
-                </Badge>
-              </div>
-            </div>
-
-            {/* 2. New Shop Registration */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.new_shop_registrations_open !== false ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
-                    <Store className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">New Shop Registration</h4>
-                    <span className="text-[10px] text-muted-foreground">Vendor onboarding switch</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={platformSettings?.new_shop_registrations_open !== false}
-                  onCheckedChange={() => handleToggleSetting('new_shop_registrations_open', platformSettings?.new_shop_registrations_open !== false)}
-                  disabled={updatingSetting === 'new_shop_registrations_open'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Controls whether new printing shops can sign up or submit onboarding applications.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>new_shop_registrations_open</code></span>
-                <Badge variant={platformSettings?.new_shop_registrations_open !== false ? 'default' : 'secondary'} className={`text-[9px] ${platformSettings?.new_shop_registrations_open !== false ? 'bg-emerald-600' : ''}`}>
-                  {platformSettings?.new_shop_registrations_open !== false ? 'OPEN' : 'SUSPENDED'}
-                </Badge>
-              </div>
-            </div>
-
-            {/* 3. 2-Day Automated Settlements */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.auto_settlement_enabled !== false ? 'bg-blue-500/10 text-blue-600' : 'bg-muted text-muted-foreground'}`}>
-                    <CalendarClock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">2-Day Automated Settlements</h4>
-                    <span className="text-[10px] text-muted-foreground">Automated payout calculation</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={platformSettings?.auto_settlement_enabled !== false}
-                  onCheckedChange={() => handleToggleSetting('auto_settlement_enabled', platformSettings?.auto_settlement_enabled !== false)}
-                  disabled={updatingSetting === 'auto_settlement_enabled'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Enforces the 48-hour rolling settlement cycle calculating net amounts after 5% platform commission.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>auto_settlement_enabled</code></span>
-                <Badge variant={platformSettings?.auto_settlement_enabled !== false ? 'default' : 'secondary'} className={`text-[9px] ${platformSettings?.auto_settlement_enabled !== false ? 'bg-blue-600' : ''}`}>
-                  {platformSettings?.auto_settlement_enabled !== false ? 'CYCLE ACTIVE' : 'PAUSED'}
-                </Badge>
-              </div>
-            </div>
-
-            {/* 4. Global VIP Discount System */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.vip_discount_system_active !== false ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground'}`}>
-                    <Crown className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">VIP Discount System</h4>
-                    <span className="text-[10px] text-muted-foreground">10% student member discount</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={platformSettings?.vip_discount_system_active !== false}
-                  onCheckedChange={() => handleToggleSetting('vip_discount_system_active', platformSettings?.vip_discount_system_active !== false)}
-                  disabled={updatingSetting === 'vip_discount_system_active'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Allows verified VIP members to enjoy automatic 10% price deductions on checkout across active shops.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>vip_discount_system_active</code></span>
-                <Badge variant={platformSettings?.vip_discount_system_active !== false ? 'default' : 'secondary'} className={`text-[9px] ${platformSettings?.vip_discount_system_active !== false ? 'bg-amber-600' : ''}`}>
-                  {platformSettings?.vip_discount_system_active !== false ? 'ACTIVE' : 'BYPASSED'}
-                </Badge>
-              </div>
-            </div>
-
-            {/* 5. Live Document Uploads */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.live_file_upload_enabled !== false ? 'bg-indigo-500/10 text-indigo-600' : 'bg-muted text-muted-foreground'}`}>
-                    <UploadCloud className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">Live Cloud Spooling</h4>
-                    <span className="text-[10px] text-muted-foreground">User PDF / DOCX upload spooler</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={platformSettings?.live_file_upload_enabled !== false}
-                  onCheckedChange={() => handleToggleSetting('live_file_upload_enabled', platformSettings?.live_file_upload_enabled !== false)}
-                  disabled={updatingSetting === 'live_file_upload_enabled'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Permits users to upload and preview document files before dispatching print jobs to local terminals.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>live_file_upload_enabled</code></span>
-                <Badge variant={platformSettings?.live_file_upload_enabled !== false ? 'default' : 'secondary'} className={`text-[9px] ${platformSettings?.live_file_upload_enabled !== false ? 'bg-indigo-600' : ''}`}>
-                  {platformSettings?.live_file_upload_enabled !== false ? 'RECEIVING' : 'SUSPENDED'}
-                </Badge>
-              </div>
-            </div>
-
-            {/* 6. Commercial Ad Sponsorship Slots */}
-            <div className="p-4 rounded-xl border border-border bg-card/60 flex flex-col justify-between space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`p-2 rounded-lg ${platformSettings?.ad_sponsorship_slots_open !== false ? 'bg-purple-500/10 text-purple-600' : 'bg-muted text-muted-foreground'}`}>
-                    <Megaphone className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-foreground">Ad Sponsorship Slots</h4>
-                    <span className="text-[10px] text-muted-foreground">Home banner & upload ad engine</span>
-                  </div>
-                </div>
-                <Switch
-                  checked={platformSettings?.ad_sponsorship_slots_open !== false}
-                  onCheckedChange={() => handleToggleSetting('ad_sponsorship_slots_open', platformSettings?.ad_sponsorship_slots_open !== false)}
-                  disabled={updatingSetting === 'ad_sponsorship_slots_open'}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Governs rotation and rendering of home hero banners and upload page sponsor placements.
-              </p>
-              <div className="pt-2 border-t border-border/50 flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">DB Column: <code>ad_sponsorship_slots_open</code></span>
-                <Badge variant={platformSettings?.ad_sponsorship_slots_open !== false ? 'default' : 'secondary'} className={`text-[9px] ${platformSettings?.ad_sponsorship_slots_open !== false ? 'bg-purple-600' : ''}`}>
-                  {platformSettings?.ad_sponsorship_slots_open !== false ? 'SLOTS OPEN' : 'PAUSED'}
-                </Badge>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
