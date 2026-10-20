@@ -1331,13 +1331,60 @@ export async function fetchSuperAdminProfile(): Promise<SuperAdminProfile | null
   return data;
 }
 
-export async function updateSuperAdminProfile(updates: Partial<SuperAdminProfile>): Promise<void> {
-  const { error } = await supabase
+export async function updateSuperAdminCredentials(
+  updates: Pick<SuperAdminProfile, 'email'> &
+    Partial<Pick<SuperAdminProfile, 'full_name' | 'preferred_theme' | 'theme_mode'>>,
+  currentPassword: string,
+  newPassword?: string
+): Promise<void> {
+  const cleanEmail = updates.email.trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('Email address is required.');
+  }
+
+  const { data: profile, error: fetchError } = await supabase
     .from('super_admin_profiles')
-    .update(updates)
+    .select('password_hash')
+    .eq('id', 'admin-01')
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!profile) throw new Error('Super Admin profile was not found.');
+
+  const cleanCurrentPassword = currentPassword.trim();
+  if (newPassword) {
+    if (!cleanCurrentPassword) {
+      throw new Error('Enter your current password to change it.');
+    }
+
+    const currentPasswordHash = await hashSecurityPin(cleanCurrentPassword);
+    const encoder = new TextEncoder();
+    const currentPasswordBytes = encoder.encode(cleanCurrentPassword);
+    const standardHashBuffer = await crypto.subtle.digest('SHA-256', currentPasswordBytes);
+    const standardHash = Array.from(new Uint8Array(standardHashBuffer))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    if (
+      profile.password_hash !== cleanCurrentPassword &&
+      profile.password_hash !== standardHash &&
+      profile.password_hash !== currentPasswordHash
+    ) {
+      throw new Error('Current password is incorrect.');
+    }
+  }
+
+  const profileUpdates = {
+    ...updates,
+    email: cleanEmail,
+    ...(newPassword ? { password_hash: await hashSecurityPin(newPassword) } : {})
+  };
+
+  const { error: updateError } = await supabase
+    .from('super_admin_profiles')
+    .update(profileUpdates)
     .eq('id', 'admin-01');
 
-  if (error) throw error;
+  if (updateError) throw updateError;
 }
 
 // ========================================================
@@ -1421,13 +1468,12 @@ export async function verifyAdminSignInPassword(password: string): Promise<boole
   const { data } = await supabase
     .from('super_admin_profiles')
     .select('password_hash')
-    .eq('email', 'admin@printon24.com')
+    .eq('id', 'admin-01')
     .maybeSingle();
 
   const saltedHash = await hashSecurityPin(cleanPass);
 
   return (
-    cleanPass === 'admin123' ||
     data?.password_hash === cleanPass ||
     data?.password_hash === saltedHash
   );
@@ -2079,4 +2125,3 @@ export async function createPrintOrder(orderData: Partial<PrintOrder> & { shop_i
   if (error) throw error;
   return data;
 }
-

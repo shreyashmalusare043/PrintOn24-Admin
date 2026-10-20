@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
-  updateSuperAdminProfile,
+  updateSuperAdminCredentials,
   fetchSecurityPasswordConfigs,
   updateSecurityPasswordWithOtp,
   setUnifiedSecurityPin
@@ -67,7 +67,10 @@ export const SettingsPage: React.FC = () => {
   const { themeColor, setThemeColor, themeMode, setThemeMode } = useTheme();
 
   const [fullName, setFullName] = useState(admin?.full_name || 'Super Administrator');
-  const [email] = useState(admin?.email || 'admin@printon24.com');
+  const [email, setEmail] = useState(admin?.email || '');
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Security Passwords State
@@ -237,17 +240,42 @@ export const SettingsPage: React.FC = () => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanNewPassword = newAdminPassword.trim();
+    const passwordChangeRequested = Boolean(newAdminPassword || confirmAdminPassword);
+
+    if (passwordChangeRequested) {
+      if (!cleanNewPassword || !confirmAdminPassword.trim()) {
+        toast.error('Enter and confirm your new password.');
+        return;
+      }
+
+      if (!currentAdminPassword.trim()) {
+        toast.error('Enter your current password to change it.');
+        return;
+      }
+
+      if (cleanNewPassword !== confirmAdminPassword.trim()) {
+        toast.error('New password and confirmation do not match.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      await updateSuperAdminProfile({
+      await updateSuperAdminCredentials({
+        email: cleanEmail,
         full_name: fullName,
         preferred_theme: themeColor,
         theme_mode: themeMode
-      });
-      updateAdmin({ full_name: fullName });
-      toast.success('Super Admin profile preferences saved');
-    } catch {
-      toast.error('Failed to update profile');
+      }, currentAdminPassword, cleanNewPassword || undefined);
+      updateAdmin({ email: cleanEmail, full_name: fullName });
+      setCurrentAdminPassword('');
+      setNewAdminPassword('');
+      setConfirmAdminPassword('');
+      toast.success('Super Admin profile updated successfully.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update profile.');
     } finally {
       setSaving(false);
     }
@@ -262,7 +290,7 @@ export const SettingsPage: React.FC = () => {
             System & Security Settings
           </h2>
           <p className="text-xs md:text-sm text-muted-foreground mt-1">
-            Manage multi-theme visual styles, Super Admin identity, and 6-digit backend security passwords with email OTP verification.
+            Manage Super Admin credentials, multi-theme visual styles, and 6-digit backend security passwords.
           </p>
         </div>
       </div>
@@ -480,11 +508,47 @@ export const SettingsPage: React.FC = () => {
               <div className="space-y-1">
                 <Label className="text-xs font-semibold">Email Address</Label>
                 <Input
-                  disabled
+                  type="email"
+                  required
                   value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="h-9 text-xs font-mono bg-muted"
                 />
                 <span className="text-[10px] text-muted-foreground">Master email used for receiving verification OTPs.</span>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Current Password</Label>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentAdminPassword}
+                  onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                  className="h-9 text-xs"
+                />
+                <span className="text-[10px] text-muted-foreground">Required only when changing your password.</span>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">New Password</Label>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newAdminPassword}
+                  onChange={(e) => setNewAdminPassword(e.target.value)}
+                  className="h-9 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Confirm New Password</Label>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmAdminPassword}
+                  onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                  className="h-9 text-xs"
+                />
               </div>
 
               <div className="space-y-1">
@@ -528,7 +592,7 @@ export const SettingsPage: React.FC = () => {
                 <Label className="text-xs font-semibold">Super Admin Sign-In Password *</Label>
                 <Input
                   type="password"
-                  placeholder="Enter admin password (e.g. admin123)"
+                  placeholder="Enter your Super Admin password"
                   value={adminSignInPassword}
                   onChange={(e) => {
                     setAdminSignInPassword(e.target.value);
@@ -711,4 +775,3 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
-

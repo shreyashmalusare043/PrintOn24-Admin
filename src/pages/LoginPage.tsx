@@ -32,8 +32,8 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
 
   // Admin form
-  const [email, setEmail] = useState('admin@printon24.com');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -57,12 +57,6 @@ export const LoginPage: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleQuickFillAdmin = () => {
-    setEmail('admin@printon24.com');
-    setPassword('admin123');
-    toast.info('Default Super Admin credentials loaded');
   };
 
   return (
@@ -247,7 +241,7 @@ export const LoginPage: React.FC = () => {
                       id="email"
                       type="email"
                       required
-                      placeholder="admin@printon24.com"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="pl-9 h-10 text-sm"
@@ -256,16 +250,7 @@ export const LoginPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-xs font-semibold">Password</Label>
-                    <button
-                      type="button"
-                      onClick={handleQuickFillAdmin}
-                      className="text-[11px] text-primary hover:underline font-medium"
-                    >
-                      Auto-Fill Preset
-                    </button>
-                  </div>
+                  <Label htmlFor="password" className="text-xs font-semibold">Password</Label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
                     <Input
